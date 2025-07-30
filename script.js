@@ -630,33 +630,41 @@ function setupZoomAndPan() {
     svg.addEventListener('mousedown', (e) => {
         if (e.button === 0) { // left click
             e.preventDefault();
+            e.stopPropagation();
             isPanning = true;
-            const rect = svg.getBoundingClientRect();
-            lastMouseX = e.clientX - rect.left;
-            lastMouseY = e.clientY - rect.top;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
             svg.style.cursor = 'grabbing';
+            console.log('started panning');
         }
     });
     
     document.addEventListener('mousemove', (e) => {
         if (isPanning) {
             e.preventDefault();
-            const rect = svg.getBoundingClientRect();
-            const currentX = e.clientX - rect.left;
-            const currentY = e.clientY - rect.top;
-            const deltaX = currentX - lastMouseX;
-            const deltaY = currentY - lastMouseY;
+            e.stopPropagation();
+            const deltaX = e.clientX - lastMouseX;
+            const deltaY = e.clientY - lastMouseY;
+            console.log(`panning: deltaX=${deltaX}, deltaY=${deltaY}`);
             panMap(deltaX, deltaY);
-            lastMouseX = currentX;
-            lastMouseY = currentY;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
         }
     });
     
-    document.addEventListener('mouseup', () => {
+    document.addEventListener('mouseup', (e) => {
         if (isPanning) {
+            e.preventDefault();
+            e.stopPropagation();
             isPanning = false;
             svg.style.cursor = 'grab';
+            console.log('stopped panning');
         }
+    });
+    
+    // prevent context menu on right click
+    svg.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
     });
     
     // initial cursor
