@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>circuit board flight map</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="title">circuit board flight map</h1>
+            <p class="subtitle">neon-green flight paths on dark pcb aesthetic</p>
+        </header>
+        
+        <main class="main-content">
+            <div class="map-container">
+                <svg id="map" viewBox="0 0 1000 500" class="flight-map">
+                    <!-- continent outlines will be rendered here -->
+                    <!-- flight paths will be rendered here -->
+                </svg>
+                
+                <div class="grid-overlay"></div>
+            </div>
+            
+            <div class="controls-panel">
+                <form id="flight-form" class="flight-form">
+                    <div class="input-group">
+                        <label for="from-airport">from (iata):</label>
+                        <input 
+                            type="text" 
+                            id="from-airport" 
+                            placeholder="JFK" 
+                            maxlength="3"
+                            pattern="[A-Za-z]{3}"
+                            required
+                        >
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="to-airport">to (iata):</label>
+                        <input 
+                            type="text" 
+                            id="to-airport" 
+                            placeholder="NRT" 
+                            maxlength="3"
+                            pattern="[A-Za-z]{3}"
+                            required
+                        >
+                    </div>
+                    
+                    <button type="submit" class="add-flight-btn">add flight</button>
+                </form>
+                
+                <div class="flight-list-container">
+                    <h3 class="flight-list-title">active flights:</h3>
+                    <div id="flight-list" class="flight-list">
+                        <!-- active flights will be listed here -->
+                    </div>
+                </div>
+                
+                <div class="instructions">
+                    <h4>instructions:</h4>
+                    <ul>
+                        <li>enter 3-letter iata airport codes</li>
+                        <li>click "add flight" to draw connection</li>
+                        <li>use × button to remove flights</li>
+                        <li>all coordinates snap to grid</li>
+                    </ul>
+                    
+                    <details class="airport-codes">
+                        <summary>common airport codes</summary>
+                        <div class="codes-grid">
+                            <div>jfk - new york</div>
+                            <div>lax - los angeles</div>
+                            <div>lhr - london</div>
+                            <div>nrt - tokyo</div>
+                            <div>cdg - paris</div>
+                            <div>fra - frankfurt</div>
+                            <div>ist - istanbul</div>
+                            <div>dxb - dubai</div>
+                            <div>sin - singapore</div>
+                            <div>syd - sydney</div>
+                            <div>gru - sao paulo</div>
+                            <div>jnb - johannesburg</div>
+                        </div>
+                    </details>
+                </div>
+            </div>
+        </main>
+        
+        <footer class="footer">
+            <p>coordinate validation: lat ∈ [-90, 90], lon ∈ [-180, 180]</p>
+            <p>grid snapping: 8px alignment for circuit board aesthetic</p>
+        </footer>
+    </div>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html> 

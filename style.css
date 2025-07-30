@@ -1,0 +1,375 @@
+/* circuit board flight map - pcb dark theme */
+
+:root {
+    --pcb-black: #0a0a0a;
+    --pcb-dark: #111111;
+    --pcb-green: #00ff41;
+    --pcb-cyan: #00ffff;
+    --pcb-amber: #ffaa00;
+    --pcb-red: #ff0040;
+    --pcb-gray: #333333;
+    --pcb-light-gray: #666666;
+    --grid-size: 16px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'courier new', monospace;
+    background: var(--pcb-black);
+    color: var(--pcb-green);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.container {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* header styles */
+.header {
+    background: var(--pcb-dark);
+    border-bottom: 1px solid var(--pcb-green);
+    padding: 1rem 2rem;
+    text-align: center;
+}
+
+.title {
+    font-size: 24px;
+    color: var(--pcb-cyan);
+    text-transform: lowercase;
+    letter-spacing: 2px;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    color: var(--pcb-light-gray);
+    font-size: 12px;
+}
+
+/* main content layout */
+.main-content {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 1px;
+    background: var(--pcb-green);
+}
+
+.map-container {
+    background: var(--pcb-black);
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--pcb-green);
+}
+
+.controls-panel {
+    background: var(--pcb-dark);
+    padding: 1.5rem;
+    border-left: 1px solid var(--pcb-green);
+    overflow-y: auto;
+}
+
+/* svg map styles */
+.flight-map {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background: var(--pcb-black);
+}
+
+/* continent outlines */
+.continent {
+    fill: none;
+    stroke: var(--pcb-green);
+    stroke-width: 1px;
+    opacity: 0.6;
+}
+
+/* flight lines */
+.flight-line {
+    stroke: var(--pcb-cyan);
+    stroke-width: 2px;
+    opacity: 0.8;
+}
+
+.flight-line:hover {
+    stroke: var(--pcb-amber);
+    opacity: 1.0;
+    stroke-width: 3px;
+}
+
+/* airport dots */
+.airport-dot {
+    fill: var(--pcb-green);
+    stroke: var(--pcb-cyan);
+    stroke-width: 1px;
+}
+
+.airport-dot:hover {
+    fill: var(--pcb-amber);
+}
+
+/* grid overlay for debugging */
+.grid-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    opacity: 0.1;
+    background-image: 
+        linear-gradient(90deg, var(--pcb-green) 1px, transparent 1px),
+        linear-gradient(var(--pcb-green) 1px, transparent 1px);
+    background-size: var(--grid-size) var(--grid-size);
+}
+
+/* form styles */
+.flight-form {
+    border: 1px solid var(--pcb-gray);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    background: var(--pcb-black);
+}
+
+.input-group {
+    margin-bottom: 1rem;
+}
+
+.input-group label {
+    display: block;
+    color: var(--pcb-light-gray);
+    margin-bottom: 4px;
+    font-size: 12px;
+    text-transform: lowercase;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--pcb-dark);
+    border: 1px solid var(--pcb-gray);
+    color: var(--pcb-green);
+    font-family: inherit;
+    font-size: 14px;
+    text-transform: uppercase;
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: var(--pcb-cyan);
+    box-shadow: 0 0 0 1px var(--pcb-cyan);
+}
+
+.input-group input::placeholder {
+    color: var(--pcb-light-gray);
+    opacity: 0.7;
+}
+
+.add-flight-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--pcb-green);
+    color: var(--pcb-black);
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 14px;
+    text-transform: lowercase;
+    font-weight: bold;
+}
+
+.add-flight-btn:hover {
+    background: var(--pcb-cyan);
+}
+
+.add-flight-btn:active {
+    background: var(--pcb-amber);
+}
+
+/* flight list */
+.flight-list-container {
+    margin-bottom: 1.5rem;
+}
+
+.flight-list-title {
+    color: var(--pcb-cyan);
+    font-size: 16px;
+    margin-bottom: 0.5rem;
+    text-transform: lowercase;
+}
+
+.flight-list {
+    border: 1px solid var(--pcb-gray);
+    background: var(--pcb-black);
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.flight-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--pcb-gray);
+}
+
+.flight-item:last-child {
+    border-bottom: none;
+}
+
+.flight-route {
+    color: var(--pcb-green);
+    font-size: 12px;
+    flex: 1;
+}
+
+.remove-btn {
+    background: var(--pcb-red);
+    color: var(--pcb-black);
+    border: none;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.remove-btn:hover {
+    background: var(--pcb-amber);
+}
+
+/* instructions */
+.instructions {
+    border: 1px solid var(--pcb-gray);
+    padding: 1rem;
+    background: var(--pcb-black);
+}
+
+.instructions h4 {
+    color: var(--pcb-cyan);
+    font-size: 14px;
+    margin-bottom: 0.5rem;
+    text-transform: lowercase;
+}
+
+.instructions ul {
+    list-style: none;
+    color: var(--pcb-light-gray);
+}
+
+.instructions li {
+    font-size: 12px;
+    margin-bottom: 4px;
+    position: relative;
+    padding-left: 12px;
+}
+
+.instructions li::before {
+    content: '>';
+    position: absolute;
+    left: 0;
+    color: var(--pcb-green);
+}
+
+.airport-codes {
+    margin-top: 1rem;
+}
+
+.airport-codes summary {
+    color: var(--pcb-cyan);
+    cursor: pointer;
+    font-size: 12px;
+    margin-bottom: 0.5rem;
+}
+
+.codes-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 2px;
+    font-size: 11px;
+    color: var(--pcb-light-gray);
+    margin-top: 0.5rem;
+}
+
+.codes-grid div {
+    text-transform: lowercase;
+}
+
+/* footer */
+.footer {
+    background: var(--pcb-dark);
+    border-top: 1px solid var(--pcb-green);
+    padding: 1rem 2rem;
+    text-align: center;
+    color: var(--pcb-light-gray);
+    font-size: 11px;
+}
+
+.footer p {
+    margin-bottom: 4px;
+}
+
+/* responsive design */
+@media (max-width: 768px) {
+    .main-content {
+        grid-template-columns: 1fr;
+        grid-template-rows: 1fr auto;
+    }
+    
+    .controls-panel {
+        border-left: none;
+        border-top: 1px solid var(--pcb-green);
+        max-height: 300px;
+    }
+    
+    .header {
+        padding: 1rem;
+    }
+    
+    .title {
+        font-size: 20px;
+    }
+}
+
+/* custom scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--pcb-dark);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--pcb-gray);
+    border-radius: 0;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--pcb-green);
+}
+
+/* selection styles */
+::selection {
+    background: var(--pcb-green);
+    color: var(--pcb-black);
+}
+
+/* focus styles for accessibility */
+button:focus,
+input:focus,
+summary:focus {
+    outline: 2px solid var(--pcb-cyan);
+    outline-offset: 2px;
+} 

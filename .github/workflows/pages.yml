@@ -1,0 +1,39 @@
+name: deploy to github pages
+on:
+  push:
+    branches: [main, master]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout repository
+        uses: actions/checkout@v4
+        
+      - name: setup pages
+        uses: actions/configure-pages@v4
+        
+      - name: create build directory
+        run: mkdir -p dist
+        
+      - name: copy files to dist
+        run: |
+          cp index.html dist/
+          cp style.css dist/
+          cp script.js dist/
+          cp -r data dist/
+          
+      - name: upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+          
+      - name: deploy to github pages
+        id: deployment
+        uses: actions/deploy-pages@v4 
