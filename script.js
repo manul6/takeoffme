@@ -724,8 +724,8 @@ function updateMapTransform() {
     const svg = document.getElementById('map');
     // ensure consistent panning regardless of zoom by translating in unscaled units
     svg.style.transformOrigin = '0 0';
-    const translateX = currentPanX / currentZoom;
-    const translateY = currentPanY / currentZoom;
+    const translateX = currentPanX;
+    const translateY = currentPanY;
     svg.style.transform = `scale(${currentZoom}) translate(${translateX}px, ${translateY}px)`;
 }
 
