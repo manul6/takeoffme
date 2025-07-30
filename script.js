@@ -49,7 +49,7 @@ function projectAndSnap(lat, lon) {
     };
 }
 
-// create svg path string from coordinate array (for country borders - orthogonal only)
+// create svg path string with 0/45/90 degree circuit board routing
 function createPath(coordinates, closed = true) {
     if (!coordinates || coordinates.length < 2) return '';
     
@@ -62,7 +62,6 @@ function createPath(coordinates, closed = true) {
         if (i === 0) {
             pathData += `M ${x} ${y}`;
         } else {
-            // create orthogonal segments for clean country borders
             const prevCoord = coordinates[i - 1];
             const [prevLon, prevLat] = prevCoord;
             const prev = projectAndSnap(prevLat, prevLon);
@@ -70,13 +69,45 @@ function createPath(coordinates, closed = true) {
             const dx = x - prev.x;
             const dy = y - prev.y;
             
-            // create stepped path for circuit board aesthetic
-            if (Math.abs(dx) > Math.abs(dy)) {
-                // horizontal first
-                pathData += ` L ${x} ${prev.y} L ${x} ${y}`;
+            // circuit board routing with 0/45/90 degree angles
+            if (dx === 0 || dy === 0) {
+                // direct horizontal or vertical line
+                pathData += ` L ${x} ${y}`;
+            } else if (Math.abs(dx) === Math.abs(dy)) {
+                // perfect 45-degree diagonal
+                pathData += ` L ${x} ${y}`;
+            } else if (Math.abs(dx - dy) <= GRID_SIZE) {
+                // close to 45-degree - use diagonal
+                pathData += ` L ${x} ${y}`;
             } else {
-                // vertical first
-                pathData += ` L ${prev.x} ${y} L ${x} ${y}`;
+                // use circuit board routing with 45-degree segments when beneficial
+                const absDx = Math.abs(dx);
+                const absDy = Math.abs(dy);
+                const minDist = Math.min(absDx, absDy);
+                
+                if (minDist >= GRID_SIZE * 2) {
+                    // use 45-degree diagonal + orthogonal routing
+                    const diagLen = Math.floor(minDist * 0.6 / GRID_SIZE) * GRID_SIZE;
+                    const diagX = prev.x + (dx > 0 ? diagLen : -diagLen);
+                    const diagY = prev.y + (dy > 0 ? diagLen : -diagLen);
+                    
+                    // diagonal segment first
+                    pathData += ` L ${diagX} ${diagY}`;
+                    
+                    // then orthogonal to destination
+                    if (absDx > absDy) {
+                        pathData += ` L ${x} ${diagY} L ${x} ${y}`;
+                    } else {
+                        pathData += ` L ${diagX} ${y} L ${x} ${y}`;
+                    }
+                } else {
+                    // traditional orthogonal routing for small segments
+                    if (absDx > absDy) {
+                        pathData += ` L ${x} ${prev.y} L ${x} ${y}`;
+                    } else {
+                        pathData += ` L ${prev.x} ${y} L ${x} ${y}`;
+                    }
+                }
             }
         }
     }
