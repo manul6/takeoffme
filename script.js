@@ -713,8 +713,11 @@ function resetZoom() {
 
 function updateMapTransform() {
     const svg = document.getElementById('map');
-    const transform = `translate(${currentPanX}, ${currentPanY}) scale(${currentZoom})`;
-    svg.style.transform = transform;
+    // ensure consistent panning regardless of zoom by translating in unscaled units
+    svg.style.transformOrigin = '0 0';
+    const translateX = currentPanX / currentZoom;
+    const translateY = currentPanY / currentZoom;
+    svg.style.transform = `scale(${currentZoom}) translate(${translateX}px, ${translateY}px)`;
 }
 
 // make functions globally available
