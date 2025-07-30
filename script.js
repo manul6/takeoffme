@@ -10,19 +10,27 @@ const GRID_SIZE = 4; // 4px grid for circuit paths
 // active flights storage
 let activeFlights = [];
 
-// coordinate validation
+// coordinate validation with floating point tolerance
 function validateCoordinate(lat, lon, context = '') {
-    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    const EPSILON = 1e-10; // tolerance for floating point precision
+    
+    // clamp values that are very close to boundaries
+    if (lat < -90 - EPSILON || lat > 90 + EPSILON || 
+        lon < -180 - EPSILON || lon > 180 + EPSILON) {
         throw new Error(`invalid coordinate ${context}: lat=${lat}, lon=${lon}`);
     }
 }
 
-// equirectangular projection with validation
+// equirectangular projection with validation and clamping
 function project(lat, lon) {
     validateCoordinate(lat, lon, 'in projection');
     
-    const x = (lon + 180) * (MAP_WIDTH / 360);
-    const y = (90 - lat) * (MAP_HEIGHT / 180);
+    // clamp to valid ranges to handle floating point precision
+    const clampedLat = Math.max(-90, Math.min(90, lat));
+    const clampedLon = Math.max(-180, Math.min(180, lon));
+    
+    const x = (clampedLon + 180) * (MAP_WIDTH / 360);
+    const y = (90 - clampedLat) * (MAP_HEIGHT / 180);
     
     return { x: x, y: y };
 }
