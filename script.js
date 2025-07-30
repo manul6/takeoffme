@@ -14,6 +14,9 @@ let currentPanY = 0;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 8;
 
+// map container element reference (set during setup)
+let mapContainerElement = null;
+
 // active flights storage with localStorage persistence
 let activeFlights = [];
 
@@ -599,6 +602,7 @@ function initializeMap() {
 function setupZoomAndPan() {
     const svg = document.getElementById('map');
     const mapContainer = document.querySelector('.map-container');
+    mapContainerElement = mapContainer;
     
     // create zoom controls
     const zoomControls = document.createElement('div');
@@ -697,9 +701,14 @@ function panMap(deltaX, deltaY) {
         currentPanX += mapWidthScaled;
     }
     
-    // limit vertical panning to prevent excessive scrolling
-    const maxPanY = MAP_HEIGHT * currentZoom * 0.3;
-    currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
+    // dynamic vertical panning limits based on container height
+    if (mapContainerElement) {
+        const containerHeight = mapContainerElement.clientHeight;
+        const scaledHeight = MAP_HEIGHT * currentZoom;
+        // allow the map to move so that it can fully exit the view but not much more
+        const maxPanY = Math.max(0, (scaledHeight - containerHeight) / 2) + 100; // 100px extra margin
+        currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
+    }
     
     updateMapTransform();
 }
