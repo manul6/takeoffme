@@ -119,67 +119,85 @@ function createPath(coordinates, closed = true) {
     return pathData;
 }
 
-// create circuit-board flight path using same logic as country borders
+// create circuit-board flight path that follows the line closely with many small segments
 function createFlightPath(from, to) {
-    // create waypoints for the flight path using circuit board routing
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const totalDistance = Math.sqrt(dx * dx + dy * dy);
+    
+    // create many intermediate points along the direct line
+    const segmentLength = GRID_SIZE * 6; // small segments for close following
+    const numSegments = Math.max(3, Math.ceil(totalDistance / segmentLength));
+    
     const waypoints = [from];
     
-    // apply the same routing logic as createPath but for flight waypoints
-    let current = { x: from.x, y: from.y };
-    let target = { x: to.x, y: to.y };
-    
-    while (current.x !== target.x || current.y !== target.y) {
-        const dx = target.x - current.x;
-        const dy = target.y - current.y;
+    // generate intermediate target points along the straight line
+    for (let i = 1; i < numSegments; i++) {
+        const progress = i / numSegments;
+        const targetX = snap(from.x + dx * progress);
+        const targetY = snap(from.y + dy * progress);
         
-        let next;
+        // route from current position to this intermediate target using circuit board rules
+        let current = waypoints[waypoints.length - 1];
+        const intermediateDx = targetX - current.x;
+        const intermediateDy = targetY - current.y;
         
-        // use exact same logic as createPath function
-        if (dx === 0 || dy === 0) {
-            // direct horizontal or vertical line
-            next = { x: target.x, y: target.y };
-        } else if (Math.abs(dx) === Math.abs(dy)) {
+        if (intermediateDx === 0 || intermediateDy === 0) {
+            // direct horizontal or vertical
+            waypoints.push({ x: targetX, y: targetY });
+        } else if (Math.abs(intermediateDx) === Math.abs(intermediateDy)) {
             // perfect 45-degree diagonal
-            next = { x: target.x, y: target.y };
-        } else if (Math.abs(dx - dy) <= GRID_SIZE) {
-            // close to 45-degree - use diagonal
-            next = { x: target.x, y: target.y };
+            waypoints.push({ x: targetX, y: targetY });
         } else {
-            // use circuit board routing with 45-degree segments when beneficial
-            const absDx = Math.abs(dx);
-            const absDy = Math.abs(dy);
+            // use circuit board routing with small segments
+            const absDx = Math.abs(intermediateDx);
+            const absDy = Math.abs(intermediateDy);
             const minDist = Math.min(absDx, absDy);
             
-            if (minDist >= GRID_SIZE * 2) {
-                // use 45-degree diagonal + orthogonal routing
-                const diagLen = Math.floor(minDist * 0.6 / GRID_SIZE) * GRID_SIZE;
-                const diagX = current.x + (dx > 0 ? diagLen : -diagLen);
-                const diagY = current.y + (dy > 0 ? diagLen : -diagLen);
+            if (minDist >= GRID_SIZE) {
+                // create 45-degree diagonal segment first
+                const diagLen = Math.min(minDist, GRID_SIZE * 4); // shorter diagonal segments
+                const diagX = current.x + (intermediateDx > 0 ? diagLen : -diagLen);
+                const diagY = current.y + (intermediateDy > 0 ? diagLen : -diagLen);
                 
-                // diagonal segment first
-                next = { x: diagX, y: diagY };
-            } else {
-                // traditional orthogonal routing for small segments
-                if (absDx > absDy) {
-                    next = { x: target.x, y: current.y };
+                waypoints.push({ x: diagX, y: diagY });
+                
+                // then complete the path orthogonally
+                if (diagX !== targetX && diagY !== targetY) {
+                    if (absDx > absDy) {
+                        waypoints.push({ x: targetX, y: diagY });
+                        if (targetY !== diagY) {
+                            waypoints.push({ x: targetX, y: targetY });
+                        }
+                    } else {
+                        waypoints.push({ x: diagX, y: targetY });
+                        if (targetX !== diagX) {
+                            waypoints.push({ x: targetX, y: targetY });
+                        }
+                    }
                 } else {
-                    next = { x: current.x, y: target.y };
+                    waypoints.push({ x: targetX, y: targetY });
+                }
+            } else {
+                // small segment - use orthogonal
+                if (absDx > absDy) {
+                    waypoints.push({ x: targetX, y: current.y });
+                    if (targetY !== current.y) {
+                        waypoints.push({ x: targetX, y: targetY });
+                    }
+                } else {
+                    waypoints.push({ x: current.x, y: targetY });
+                    if (targetX !== current.x) {
+                        waypoints.push({ x: targetX, y: targetY });
+                    }
                 }
             }
         }
-        
-        waypoints.push(next);
-        current = next;
-        
-        // safety check to prevent infinite loops
-        if (waypoints.length > 10) {
-            waypoints.push(target);
-            break;
-        }
     }
     
-    // ensure final destination is included  
-    if (waypoints[waypoints.length - 1].x !== to.x || waypoints[waypoints.length - 1].y !== to.y) {
+    // ensure we end at the exact destination
+    const lastPoint = waypoints[waypoints.length - 1];
+    if (lastPoint.x !== to.x || lastPoint.y !== to.y) {
         waypoints.push(to);
     }
     
