@@ -84,12 +84,17 @@ body {
     background: var(--pcb-black);
 }
 
-/* continent outlines */
-.continent {
+/* country outlines */
+.country {
     fill: none;
     stroke: var(--pcb-green);
     stroke-width: 1px;
     opacity: 0.6;
+}
+
+.country:hover {
+    opacity: 0.8;
+    stroke-width: 2px;
 }
 
 /* flight lines */

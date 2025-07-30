@@ -1,5 +1,5 @@
 // circuit board flight map - main application logic
-import { continents } from './data/continents.js';
+import { countries } from './data/countries.js';
 import { airports } from './data/airports.js';
 
 // svg dimensions and projection settings
@@ -80,28 +80,37 @@ function createPath(coordinates, closed = true) {
     return pathData;
 }
 
-// render continent outlines
-function renderContinents() {
+// render raw country outlines
+function renderCountries() {
     const svg = document.getElementById('map');
-    const continentsGroup = document.getElementById('continents-group') || 
-                           document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    const countriesGroup = document.getElementById('countries-group') || 
+                          document.createElementNS('http://www.w3.org/2000/svg', 'g');
     
-    continentsGroup.id = 'continents-group';
-    continentsGroup.innerHTML = ''; // clear existing
+    countriesGroup.id = 'countries-group';
+    countriesGroup.innerHTML = ''; // clear existing
     
-    for (const [continentName, coordinates] of Object.entries(continents)) {
-        if (coordinates.length === 0) continue;
+    let totalPaths = 0;
+    
+    for (const [countryName, countryData] of Object.entries(countries)) {
+        if (!countryData.polygons || countryData.polygons.length === 0) continue;
         
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', createPath(coordinates));
-        path.setAttribute('class', 'continent');
-        path.setAttribute('data-continent', continentName);
-        
-        continentsGroup.appendChild(path);
+        // render each polygon for this country
+        for (let i = 0; i < countryData.polygons.length; i++) {
+            const polygon = countryData.polygons[i];
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', createPath(polygon));
+            path.setAttribute('class', 'country');
+            path.setAttribute('data-country', countryName);
+            path.setAttribute('data-polygon', i);
+            
+            countriesGroup.appendChild(path);
+            totalPaths++;
+        }
     }
     
-    svg.appendChild(continentsGroup);
-    console.log('rendered continents');
+    svg.appendChild(countriesGroup);
+    console.log(`rendered ${totalPaths} country polygons from ${Object.keys(countries).length} countries`);
 }
 
 // render flights
@@ -238,7 +247,7 @@ function initializeMap() {
     console.log(`loaded ${validAirports} valid airports`);
     
     // render initial map
-    renderContinents();
+    renderCountries();
     renderFlights();
     updateFlightList();
     
