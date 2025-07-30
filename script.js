@@ -5,7 +5,7 @@ import { airports } from './data/airports.js';
 // svg dimensions and projection settings
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 500;
-const GRID_SIZE = 8; // 8px grid for snapping
+const GRID_SIZE = 2; // 2px fine grid for detailed circuit paths
 
 // active flights storage
 let activeFlights = [];

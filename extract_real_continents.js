@@ -1,83 +1,29 @@
 const fs = require('fs');
 
-// validation function for coordinates
-function validateCoordinate(lon, lat, countryName, pointIndex) {
+// much finer grid for detailed circuit board paths
+const FINE_GRID = 2; // 2px grid instead of 8px
+
+// coordinate validation
+function validateCoordinate(lon, lat, context = '') {
     if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-        throw new Error(`bad coordinate in ${countryName} point ${pointIndex}: lat=${lat}, lon=${lon}`);
-    }
-    // detect potential swapped coordinates (common error)
-    if (Math.abs(lon) <= 90 && Math.abs(lat) <= 180 && Math.abs(lat) > Math.abs(lon)) {
-        console.warn(`potential swapped coordinates in ${countryName}: lat=${lat}, lon=${lon}`);
+        throw new Error(`invalid coordinate ${context}: lat=${lat}, lon=${lon}`);
     }
 }
 
-// simplified douglas-peucker algorithm for polygon simplification
-function simplifyPolygon(points, tolerance = 2.0) {
-    if (points.length <= 2) return points;
+// project and snap to fine grid
+function projectAndSnapFine(lat, lon) {
+    // equirectangular projection
+    const x = (lon + 180) * (1000 / 360);
+    const y = (90 - lat) * (500 / 180);
     
-    function perpDistance(point, lineStart, lineEnd) {
-        const [x, y] = point;
-        const [x1, y1] = lineStart;
-        const [x2, y2] = lineEnd;
-        
-        const A = x - x1;
-        const B = y - y1;
-        const C = x2 - x1;
-        const D = y2 - y1;
-        
-        const dot = A * C + B * D;
-        const lenSq = C * C + D * D;
-        
-        if (lenSq === 0) return Math.sqrt(A * A + B * B);
-        
-        const param = dot / lenSq;
-        let xx, yy;
-        
-        if (param < 0) {
-            xx = x1;
-            yy = y1;
-        } else if (param > 1) {
-            xx = x2;
-            yy = y2;
-        } else {
-            xx = x1 + param * C;
-            yy = y1 + param * D;
-        }
-        
-        const dx = x - xx;
-        const dy = y - yy;
-        return Math.sqrt(dx * dx + dy * dy);
-    }
-    
-    function douglasPeucker(points, start, end, tolerance) {
-        let maxDist = 0;
-        let index = 0;
-        
-        for (let i = start + 1; i < end; i++) {
-            const dist = perpDistance(points[i], points[start], points[end]);
-            if (dist > maxDist) {
-                index = i;
-                maxDist = dist;
-            }
-        }
-        
-        let result = [];
-        if (maxDist > tolerance) {
-            const leftResult = douglasPeucker(points, start, index, tolerance);
-            const rightResult = douglasPeucker(points, index, end, tolerance);
-            
-            result = leftResult.slice(0, -1).concat(rightResult);
-        } else {
-            result = [points[start], points[end]];
-        }
-        
-        return result;
-    }
-    
-    return douglasPeucker(points, 0, points.length - 1, tolerance);
+    // snap to fine grid
+    return [
+        Math.round(x / FINE_GRID) * FINE_GRID,
+        Math.round(y / FINE_GRID) * FINE_GRID
+    ];
 }
 
-// continent grouping based on geographic regions (fixed names from data)
+// continent mapping with corrected country names from the data
 const continentMapping = {
     // north america
     'United States of America': 'north_america',
@@ -282,18 +228,80 @@ const continentMapping = {
     'New Caledonia': 'oceania'
 };
 
-async function processCountryData() {
-    console.log('loading country borders data...');
+// douglas-peucker simplification with fine tolerance
+function douglasPeucker(points, tolerance = 0.5) {
+    if (points.length <= 2) return points;
+    
+    function perpDistance(point, lineStart, lineEnd) {
+        const [x, y] = point;
+        const [x1, y1] = lineStart;
+        const [x2, y2] = lineEnd;
+        
+        const A = x - x1;
+        const B = y - y1;
+        const C = x2 - x1;
+        const D = y2 - y1;
+        
+        const dot = A * C + B * D;
+        const lenSq = C * C + D * D;
+        
+        if (lenSq === 0) return Math.sqrt(A * A + B * B);
+        
+        const param = dot / lenSq;
+        let xx, yy;
+        
+        if (param < 0) {
+            xx = x1;
+            yy = y1;
+        } else if (param > 1) {
+            xx = x2;
+            yy = y2;
+        } else {
+            xx = x1 + param * C;
+            yy = y1 + param * D;
+        }
+        
+        const dx = x - xx;
+        const dy = y - yy;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    function simplifyRecursive(points, start, end, tolerance) {
+        let maxDist = 0;
+        let index = 0;
+        
+        for (let i = start + 1; i < end; i++) {
+            const dist = perpDistance(points[i], points[start], points[end]);
+            if (dist > maxDist) {
+                index = i;
+                maxDist = dist;
+            }
+        }
+        
+        if (maxDist > tolerance) {
+            const leftResult = simplifyRecursive(points, start, index, tolerance);
+            const rightResult = simplifyRecursive(points, index, end, tolerance);
+            return leftResult.slice(0, -1).concat(rightResult);
+        } else {
+            return [points[start], points[end]];
+        }
+    }
+    
+    return simplifyRecursive(points, 0, points.length - 1, tolerance);
+}
+
+async function extractRealContinents() {
+    console.log('loading real country border data...');
     
     const rawData = fs.readFileSync('country_borders_data.json.txt', 'utf8');
     const data = JSON.parse(rawData);
     
-    const continents = {
+    const continentPolygons = {
         north_america: [],
         south_america: [],
         europe: [],
         asia: [],
-        europe_asia: [], // russia
+        europe_asia: [],
         africa: [],
         oceania: []
     };
@@ -301,7 +309,7 @@ async function processCountryData() {
     let processedCount = 0;
     let totalPoints = 0;
     
-    console.log(`processing ${data.metadata.total_countries} countries...`);
+    console.log(`processing ${data.metadata.total_countries} countries with fine ${FINE_GRID}px grid...`);
     
     for (const [countryName, countryData] of Object.entries(data.countries)) {
         const continent = continentMapping[countryName];
@@ -311,33 +319,36 @@ async function processCountryData() {
         }
         
         try {
-            let countryPolygons = [];
+            let outerRings = [];
             
             if (countryData.type === 'polygon') {
-                countryPolygons = [countryData.coordinates];
+                // for polygon, coordinates IS the outer ring
+                outerRings = [countryData.coordinates];
             } else if (countryData.type === 'multipolygon') {
-                countryPolygons = countryData.coordinates;
+                // for multipolygon, each element in coordinates is a polygon
+                // and we want the outer ring (first element) of each polygon
+                for (const polygon of countryData.coordinates) {
+                    outerRings.push(polygon[0]);
+                }
             }
             
-            for (const polygon of countryPolygons) {
-                // take the outer ring (first element)
-                const outerRing = polygon[0];
+            for (const outerRing of outerRings) {
                 if (!outerRing || outerRing.length < 3) continue;
                 
-                // validate and convert coordinates
-                const validatedPoints = [];
+                // validate, project and snap coordinates
+                const projectedPoints = [];
                 for (let i = 0; i < outerRing.length; i++) {
                     const [lon, lat] = outerRing[i];
-                    validateCoordinate(lon, lat, countryName, i);
-                    validatedPoints.push([lon, lat]);
+                    validateCoordinate(lat, lon, `${countryName} point ${i}`);
+                    
+                    const [x, y] = projectAndSnapFine(lat, lon);
+                    projectedPoints.push([x, y]);
                     totalPoints++;
                 }
                 
-                // simplify the polygon
-                const simplified = simplifyPolygon(validatedPoints, 1.5);
-                
-                if (simplified.length >= 3) {
-                    continents[continent].push(...simplified);
+                // add to continent (we'll merge them later)
+                if (projectedPoints.length >= 3) {
+                    continentPolygons[continent].push(projectedPoints);
                 }
             }
             
@@ -349,31 +360,66 @@ async function processCountryData() {
     
     console.log(`processed ${processedCount} countries with ${totalPoints} total points`);
     
-    // remove duplicate points and simplify continent outlines
-    for (const [continent, points] of Object.entries(continents)) {
-        if (points.length === 0) continue;
+    // now merge country polygons into continent outlines
+    const continents = {};
+    
+    for (const [continent, polygons] of Object.entries(continentPolygons)) {
+        if (polygons.length === 0) {
+            continents[continent] = [];
+            continue;
+        }
         
-        // remove near-duplicate points
-        const unique = [];
-        for (const point of points) {
-            const isDuplicate = unique.some(existing => 
-                Math.abs(existing[0] - point[0]) < 0.1 && 
-                Math.abs(existing[1] - point[1]) < 0.1
+        console.log(`merging ${polygons.length} polygons for ${continent}...`);
+        
+        // combine all points from all country polygons
+        let allPoints = [];
+        for (const polygon of polygons) {
+            allPoints.push(...polygon);
+        }
+        
+        // remove duplicate points (keep fine detail but remove exact duplicates)
+        const uniquePoints = [];
+        for (const point of allPoints) {
+            const isDuplicate = uniquePoints.some(existing => 
+                Math.abs(existing[0] - point[0]) < FINE_GRID && 
+                Math.abs(existing[1] - point[1]) < FINE_GRID
             );
             if (!isDuplicate) {
-                unique.push(point);
+                uniquePoints.push(point);
             }
         }
         
-        // limit to max 100 points per continent
-        if (unique.length > 100) {
-            const step = Math.floor(unique.length / 100);
-            continents[continent] = unique.filter((_, i) => i % step === 0).slice(0, 100);
-        } else {
-            continents[continent] = unique;
+        // sort points to create a rough outline (by angle from centroid)
+        if (uniquePoints.length > 0) {
+            const centroidX = uniquePoints.reduce((sum, p) => sum + p[0], 0) / uniquePoints.length;
+            const centroidY = uniquePoints.reduce((sum, p) => sum + p[1], 0) / uniquePoints.length;
+            
+            uniquePoints.sort((a, b) => {
+                const angleA = Math.atan2(a[1] - centroidY, a[0] - centroidX);
+                const angleB = Math.atan2(b[1] - centroidY, b[0] - centroidX);
+                return angleA - angleB;
+            });
         }
         
-        console.log(`${continent}: ${continents[continent].length} points`);
+        // moderate simplification to keep detail but make it manageable
+        let simplified = uniquePoints;
+        if (uniquePoints.length > 300) {
+            simplified = douglasPeucker(uniquePoints, 1.0);
+        }
+        if (simplified.length > 500) {
+            // more aggressive simplification for very complex continents
+            simplified = simplified.filter((_, i) => i % 2 === 0);
+        }
+        
+        // convert back to [lon, lat] format for the continent data
+        const lonLatPoints = simplified.map(([x, y]) => {
+            const lon = (x / (1000 / 360)) - 180;
+            const lat = 90 - (y / (500 / 180));
+            return [lon, lat];
+        });
+        
+        continents[continent] = lonLatPoints;
+        console.log(`${continent}: ${continents[continent].length} points (fine grid)`);
     }
     
     return continents;
@@ -381,19 +427,21 @@ async function processCountryData() {
 
 async function main() {
     try {
-        const continents = await processCountryData();
+        const continents = await extractRealContinents();
         
-        // write continents data
-        const continentsJs = `// generated continent outlines with coordinate validation
+        // write the high-detail continent data
+        const continentsJs = `// real continent outlines from country polygon data with fine grid
+// coordinates in [lon, lat] format, validated: lat ∈ [-90, 90], lon ∈ [-180, 180]
+// extracted from actual country boundaries with ${FINE_GRID}px grid snapping
 export const continents = ${JSON.stringify(continents, null, 2)};`;
         
         fs.writeFileSync('data/continents.js', continentsJs);
-        console.log('wrote data/continents.js');
+        console.log('wrote high-detail continent data to data/continents.js');
         
-        console.log('data processing complete!');
+        console.log('real polygon extraction complete with fine grid!');
         
     } catch (error) {
-        console.error('processing failed:', error);
+        console.error('extraction failed:', error);
         process.exit(1);
     }
 }
