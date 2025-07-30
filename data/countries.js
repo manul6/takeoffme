@@ -1,6 +1,5 @@
-// all countries extracted with simple robust approach
-// coordinates in [lon, lat] format, 4px grid
-// includes major countries: usa, russia, canada, australia, etc.
+// all countries with raw polygon data - 4px grid
+// includes all major countries: usa, russia, canada, australia, etc.
 export const countries = {
   "Tanzania": {
     "type": "polygon",
