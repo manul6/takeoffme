@@ -48,6 +48,21 @@ function toDegrees(radians) {
 }
 
 function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
+    // normalize longitudes to [-180, 180]
+    lon1 = ((lon1 + 180) % 360) - 180;
+    lon2 = ((lon2 + 180) % 360) - 180;
+    
+    // check if we cross the date line and should take the shorter path
+    const lonDiff = lon2 - lon1;
+    if (Math.abs(lonDiff) > 180) {
+        // crossing date line - adjust lon2 to take shorter path
+        if (lonDiff > 0) {
+            lon2 -= 360; // go westward instead
+        } else {
+            lon2 += 360; // go eastward instead
+        }
+    }
+    
     // convert to radians
     const φ1 = toRadians(lat1);
     const λ1 = toRadians(lon1);
@@ -69,9 +84,9 @@ function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
         const f = i / numPoints;
         
         if (f === 0) {
-            points.push([lon1, lat1]);
+            points.push([((lon1 + 180) % 360) - 180, lat1]); // normalize output
         } else if (f === 1) {
-            points.push([lon2, lat2]);
+            points.push([((lon2 + 180) % 360) - 180, lat2]); // normalize output
         } else {
             // intermediate point calculation
             const A = Math.sin((1-f)*c) / Math.sin(c);
@@ -84,7 +99,8 @@ function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
             const φ = Math.atan2(z, Math.sqrt(x*x + y*y));
             const λ = Math.atan2(y, x);
             
-            points.push([toDegrees(λ), toDegrees(φ)]);
+            const normalizedLon = ((toDegrees(λ) + 180) % 360) - 180;
+            points.push([normalizedLon, toDegrees(φ)]);
         }
     }
     
@@ -200,8 +216,176 @@ function createPath(coordinates, closed = true) {
     return pathData;
 }
 
-// create geometrically accurate flight path using great circle arc with circuit board routing
-function createFlightPath(fromAirport, toAirport) {
+
+
+// render raw country outlines with horizontal wrapping
+function renderCountries() {
+    const svg = document.getElementById('map');
+    const countriesGroup = document.getElementById('countries-group') || 
+                          document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    
+    countriesGroup.id = 'countries-group';
+    countriesGroup.innerHTML = ''; // clear existing
+    
+    let totalPaths = 0;
+    
+    // render countries in original position and wrapped positions
+    for (const offset of [-MAP_WIDTH, 0, MAP_WIDTH]) {
+        for (const [countryName, countryData] of Object.entries(countries)) {
+            if (!countryData.polygons || countryData.polygons.length === 0) continue;
+            
+            // render each polygon for this country
+            for (let i = 0; i < countryData.polygons.length; i++) {
+                const polygon = countryData.polygons[i];
+                
+                // create wrapped polygon coordinates
+                const wrappedPolygon = polygon.map(([lon, lat]) => [lon, lat]);
+                
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', createPathWithOffset(wrappedPolygon, offset));
+                path.setAttribute('class', 'country');
+                path.setAttribute('data-country', countryName);
+                path.setAttribute('data-polygon', i);
+                path.setAttribute('data-offset', offset);
+                
+                countriesGroup.appendChild(path);
+                totalPaths++;
+            }
+        }
+    }
+    
+    svg.appendChild(countriesGroup);
+    console.log(`rendered ${totalPaths} country polygons with horizontal wrapping`);
+}
+
+// create svg path string with horizontal offset for wrapping
+function createPathWithOffset(coordinates, xOffset) {
+    if (!coordinates || coordinates.length < 2) return '';
+    
+    let pathData = '';
+    
+    for (let i = 0; i < coordinates.length; i++) {
+        const [lon, lat] = coordinates[i];
+        const { x, y } = projectAndSnap(lat, lon);
+        const offsetX = x + xOffset;
+        
+        if (i === 0) {
+            pathData += `M ${offsetX} ${y}`;
+        } else {
+            const prevCoord = coordinates[i - 1];
+            const [prevLon, prevLat] = prevCoord;
+            const prev = projectAndSnap(prevLat, prevLon);
+            const prevOffsetX = prev.x + xOffset;
+            
+            const dx = offsetX - prevOffsetX;
+            const dy = y - prev.y;
+            
+            // circuit board routing with 0/45/90 degree angles
+            if (dx === 0 || dy === 0) {
+                // direct horizontal or vertical line
+                pathData += ` L ${offsetX} ${y}`;
+            } else if (Math.abs(dx) === Math.abs(dy)) {
+                // perfect 45-degree diagonal
+                pathData += ` L ${offsetX} ${y}`;
+            } else if (Math.abs(dx - dy) <= GRID_SIZE) {
+                // close to 45-degree - use diagonal
+                pathData += ` L ${offsetX} ${y}`;
+            } else {
+                // use circuit board routing with 45-degree segments when beneficial
+                const absDx = Math.abs(dx);
+                const absDy = Math.abs(dy);
+                const minDist = Math.min(absDx, absDy);
+                
+                if (minDist >= GRID_SIZE * 2) {
+                    // use 45-degree diagonal + orthogonal routing
+                    const diagLen = Math.floor(minDist * 0.6 / GRID_SIZE) * GRID_SIZE;
+                    const diagX = prevOffsetX + (dx > 0 ? diagLen : -diagLen);
+                    const diagY = prev.y + (dy > 0 ? diagLen : -diagLen);
+                    
+                    // diagonal segment first
+                    pathData += ` L ${diagX} ${diagY}`;
+                    
+                    // then orthogonal to destination
+                    if (absDx > absDy) {
+                        pathData += ` L ${offsetX} ${diagY} L ${offsetX} ${y}`;
+                    } else {
+                        pathData += ` L ${diagX} ${y} L ${offsetX} ${y}`;
+                    }
+                } else {
+                    // traditional orthogonal routing for small segments
+                    if (absDx > absDy) {
+                        pathData += ` L ${offsetX} ${prev.y} L ${offsetX} ${y}`;
+                    } else {
+                        pathData += ` L ${prevOffsetX} ${y} L ${offsetX} ${y}`;
+                    }
+                }
+            }
+        }
+    }
+    
+    if (coordinates.length > 2) {
+        pathData += ' Z';
+    }
+    
+    return pathData;
+}
+
+// render flights with horizontal wrapping
+function renderFlights() {
+    const svg = document.getElementById('map');
+    let flightsGroup = document.getElementById('flights-group');
+    
+    if (!flightsGroup) {
+        flightsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        flightsGroup.id = 'flights-group';
+        svg.appendChild(flightsGroup);
+    }
+    
+    flightsGroup.innerHTML = ''; // clear existing
+    
+    // render flights in original position and wrapped positions
+    for (const offset of [-MAP_WIDTH, 0, MAP_WIDTH]) {
+        activeFlights.forEach((flight, index) => {
+            const fromAirport = airports[flight.from];
+            const toAirport = airports[flight.to];
+            
+            if (!fromAirport || !toAirport) {
+                console.error(`invalid flight: ${flight.from} -> ${flight.to}`);
+                return;
+            }
+            
+            // create geometrically accurate flight path using great circle arc
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', createFlightPathWithOffset(fromAirport, toAirport, offset));
+            path.setAttribute('class', 'flight-line');
+            path.setAttribute('data-flight-index', index);
+            path.setAttribute('data-offset', offset);
+            
+            flightsGroup.appendChild(path);
+            
+            // create airport dots at projected coordinates with offset
+            const from = projectAndSnap(fromAirport.lat, fromAirport.lon);
+            const to = projectAndSnap(toAirport.lat, toAirport.lon);
+            
+            // create airport dots with offset
+            [from, to].forEach(point => {
+                const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                dot.setAttribute('cx', point.x + offset);
+                dot.setAttribute('cy', point.y);
+                dot.setAttribute('r', 3);
+                dot.setAttribute('class', 'airport-dot');
+                dot.setAttribute('data-offset', offset);
+                
+                flightsGroup.appendChild(dot);
+            });
+        });
+    }
+    
+    console.log(`rendered ${activeFlights.length} flights with horizontal wrapping`);
+}
+
+// create flight path with horizontal offset for wrapping
+function createFlightPathWithOffset(fromAirport, toAirport, xOffset) {
     // calculate great circle arc points
     const arcPoints = calculateGreatCirclePoints(
         fromAirport.lat, fromAirport.lon,
@@ -209,20 +393,21 @@ function createFlightPath(fromAirport, toAirport) {
         15 // number of intermediate points for smooth arc
     );
     
-    // convert arc points to screen coordinates and apply circuit board routing
+    // convert arc points to screen coordinates and apply circuit board routing with offset
     const waypoints = [];
     
     for (let i = 0; i < arcPoints.length; i++) {
         const [lon, lat] = arcPoints[i];
         const screenPoint = projectAndSnap(lat, lon);
+        const offsetPoint = { x: screenPoint.x + xOffset, y: screenPoint.y };
         
         if (i === 0) {
-            waypoints.push(screenPoint);
+            waypoints.push(offsetPoint);
         } else {
             // route from previous waypoint to current arc point using circuit board rules
             let current = waypoints[waypoints.length - 1];
-            const targetX = screenPoint.x;
-            const targetY = screenPoint.y;
+            const targetX = offsetPoint.x;
+            const targetY = offsetPoint.y;
             
             const dx = targetX - current.x;
             const dy = targetY - current.y;
@@ -289,88 +474,6 @@ function createFlightPath(fromAirport, toAirport) {
     }
     
     return pathData;
-}
-
-// render raw country outlines
-function renderCountries() {
-    const svg = document.getElementById('map');
-    const countriesGroup = document.getElementById('countries-group') || 
-                          document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    
-    countriesGroup.id = 'countries-group';
-    countriesGroup.innerHTML = ''; // clear existing
-    
-    let totalPaths = 0;
-    
-    for (const [countryName, countryData] of Object.entries(countries)) {
-        if (!countryData.polygons || countryData.polygons.length === 0) continue;
-        
-        // render each polygon for this country
-        for (let i = 0; i < countryData.polygons.length; i++) {
-            const polygon = countryData.polygons[i];
-            
-            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('d', createPath(polygon));
-            path.setAttribute('class', 'country');
-            path.setAttribute('data-country', countryName);
-            path.setAttribute('data-polygon', i);
-            
-            countriesGroup.appendChild(path);
-            totalPaths++;
-        }
-    }
-    
-    svg.appendChild(countriesGroup);
-    console.log(`rendered ${totalPaths} country polygons from ${Object.keys(countries).length} countries`);
-}
-
-// render flights
-function renderFlights() {
-    const svg = document.getElementById('map');
-    let flightsGroup = document.getElementById('flights-group');
-    
-    if (!flightsGroup) {
-        flightsGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        flightsGroup.id = 'flights-group';
-        svg.appendChild(flightsGroup);
-    }
-    
-    flightsGroup.innerHTML = ''; // clear existing
-    
-    activeFlights.forEach((flight, index) => {
-        const fromAirport = airports[flight.from];
-        const toAirport = airports[flight.to];
-        
-        if (!fromAirport || !toAirport) {
-            console.error(`invalid flight: ${flight.from} -> ${flight.to}`);
-            return;
-        }
-        
-        // create geometrically accurate flight path using great circle arc
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        path.setAttribute('d', createFlightPath(fromAirport, toAirport));
-        path.setAttribute('class', 'flight-line');
-        path.setAttribute('data-flight-index', index);
-        
-        flightsGroup.appendChild(path);
-        
-        // create airport dots at projected coordinates
-        const from = projectAndSnap(fromAirport.lat, fromAirport.lon);
-        const to = projectAndSnap(toAirport.lat, toAirport.lon);
-        
-        // create airport dots
-        [from, to].forEach(point => {
-            const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            dot.setAttribute('cx', point.x);
-            dot.setAttribute('cy', point.y);
-            dot.setAttribute('r', 3);
-            dot.setAttribute('class', 'airport-dot');
-            
-            flightsGroup.appendChild(dot);
-        });
-    });
-    
-    console.log(`rendered ${activeFlights.length} flights`);
 }
 
 // add new flight
@@ -526,31 +629,34 @@ function setupZoomAndPan() {
     
     svg.addEventListener('mousedown', (e) => {
         if (e.button === 0) { // left click
+            e.preventDefault();
             isPanning = true;
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
+            const rect = svg.getBoundingClientRect();
+            lastMouseX = e.clientX - rect.left;
+            lastMouseY = e.clientY - rect.top;
             svg.style.cursor = 'grabbing';
         }
     });
     
-    svg.addEventListener('mousemove', (e) => {
+    document.addEventListener('mousemove', (e) => {
         if (isPanning) {
-            const deltaX = e.clientX - lastMouseX;
-            const deltaY = e.clientY - lastMouseY;
+            e.preventDefault();
+            const rect = svg.getBoundingClientRect();
+            const currentX = e.clientX - rect.left;
+            const currentY = e.clientY - rect.top;
+            const deltaX = currentX - lastMouseX;
+            const deltaY = currentY - lastMouseY;
             panMap(deltaX, deltaY);
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
+            lastMouseX = currentX;
+            lastMouseY = currentY;
         }
     });
     
-    svg.addEventListener('mouseup', () => {
-        isPanning = false;
-        svg.style.cursor = 'grab';
-    });
-    
-    svg.addEventListener('mouseleave', () => {
-        isPanning = false;
-        svg.style.cursor = 'grab';
+    document.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            svg.style.cursor = 'grab';
+        }
     });
     
     // initial cursor
@@ -574,6 +680,19 @@ function zoomMap(factor, centerX = null, centerY = null) {
 function panMap(deltaX, deltaY) {
     currentPanX += deltaX;
     currentPanY += deltaY;
+    
+    // implement horizontal wrapping
+    const mapWidthScaled = MAP_WIDTH * currentZoom;
+    if (currentPanX > mapWidthScaled / 2) {
+        currentPanX -= mapWidthScaled;
+    } else if (currentPanX < -mapWidthScaled / 2) {
+        currentPanX += mapWidthScaled;
+    }
+    
+    // limit vertical panning to prevent excessive scrolling
+    const maxPanY = MAP_HEIGHT * currentZoom * 0.3;
+    currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
+    
     updateMapTransform();
 }
 
