@@ -49,7 +49,7 @@ function projectAndSnap(lat, lon) {
     };
 }
 
-// create svg path string from coordinate array
+// create svg path string from coordinate array (for country borders - orthogonal only)
 function createPath(coordinates, closed = true) {
     if (!coordinates || coordinates.length < 2) return '';
     
@@ -62,7 +62,7 @@ function createPath(coordinates, closed = true) {
         if (i === 0) {
             pathData += `M ${x} ${y}`;
         } else {
-            // create orthogonal/45-degree segments
+            // create orthogonal segments for clean country borders
             const prevCoord = coordinates[i - 1];
             const [prevLon, prevLat] = prevCoord;
             const prev = projectAndSnap(prevLat, prevLon);
@@ -83,6 +83,67 @@ function createPath(coordinates, closed = true) {
     
     if (closed && coordinates.length > 2) {
         pathData += ' Z';
+    }
+    
+    return pathData;
+}
+
+// create circuit-board flight path with 45-degree angles
+function createFlightPath(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    
+    let pathData = `M ${from.x} ${from.y}`;
+    
+    // for short distances, use direct diagonal if it's close to 45 degrees
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+    
+    if (distance < 100 && (Math.abs(angle - 45) < 15 || Math.abs(angle - 135) < 15)) {
+        // direct diagonal line for short 45-degree-ish paths
+        pathData += ` L ${to.x} ${to.y}`;
+    } else {
+        // multi-segment path with 45-degree diagonals
+        const midX = from.x + dx * 0.5;
+        const midY = from.y + dy * 0.5;
+        
+        // snap intermediate points to grid
+        const snapMidX = snap(midX);
+        const snapMidY = snap(midY);
+        
+        // determine routing strategy
+        if (Math.abs(dx) > Math.abs(dy) * 2) {
+            // mostly horizontal - use horizontal + diagonal + horizontal
+            const diagLen = Math.min(Math.abs(dy), Math.abs(dx) * 0.3);
+            const diagX = from.x + (dx > 0 ? diagLen : -diagLen);
+            const diagY = from.y + (dy > 0 ? diagLen : -diagLen);
+            
+            pathData += ` L ${snap(diagX)} ${from.y}`;  // horizontal
+            pathData += ` L ${snap(diagX)} ${snap(diagY)}`;  // 45-degree diagonal
+            pathData += ` L ${to.x} ${snap(diagY)}`;  // horizontal
+            pathData += ` L ${to.x} ${to.y}`;  // final vertical
+        } else if (Math.abs(dy) > Math.abs(dx) * 2) {
+            // mostly vertical - use vertical + diagonal + vertical  
+            const diagLen = Math.min(Math.abs(dx), Math.abs(dy) * 0.3);
+            const diagX = from.x + (dx > 0 ? diagLen : -diagLen);
+            const diagY = from.y + (dy > 0 ? diagLen : -diagLen);
+            
+            pathData += ` L ${from.x} ${snap(diagY)}`;  // vertical
+            pathData += ` L ${snap(diagX)} ${snap(diagY)}`;  // 45-degree diagonal
+            pathData += ` L ${snap(diagX)} ${to.y}`;  // vertical
+            pathData += ` L ${to.x} ${to.y}`;  // final horizontal
+        } else {
+            // balanced - use 45-degree diagonal routing
+            const steps = 3;
+            const stepX = dx / steps;
+            const stepY = dy / steps;
+            
+            for (let i = 1; i <= steps; i++) {
+                const nextX = snap(from.x + stepX * i);
+                const nextY = snap(from.y + stepY * i);
+                pathData += ` L ${nextX} ${nextY}`;
+            }
+        }
     }
     
     return pathData;
@@ -146,16 +207,13 @@ function renderFlights() {
         const from = projectAndSnap(fromAirport.lat, fromAirport.lon);
         const to = projectAndSnap(toAirport.lat, toAirport.lon);
         
-        // create flight path
-        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-        line.setAttribute('x1', from.x);
-        line.setAttribute('y1', from.y);
-        line.setAttribute('x2', to.x);
-        line.setAttribute('y2', to.y);
-        line.setAttribute('class', 'flight-line');
-        line.setAttribute('data-flight-index', index);
+        // create circuit-board flight path with 45-degree angles
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', createFlightPath(from, to));
+        path.setAttribute('class', 'flight-line');
+        path.setAttribute('data-flight-index', index);
         
-        flightsGroup.appendChild(line);
+        flightsGroup.appendChild(path);
         
         // create airport dots
         [from, to].forEach(point => {

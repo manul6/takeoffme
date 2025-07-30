@@ -99,6 +99,7 @@ body {
 
 /* flight lines */
 .flight-line {
+    fill: none;
     stroke: var(--pcb-cyan);
     stroke-width: 2px;
     opacity: 0.8;
