@@ -726,7 +726,7 @@ function updateMapTransform() {
     svg.style.transformOrigin = '0 0';
     const translateX = currentPanX;
     const translateY = currentPanY;
-    svg.style.transform = `scale(${currentZoom}) translate(${translateX}px, ${translateY}px)`;
+    svg.style.transform = `translate(${currentPanX}px, ${currentPanY}px) scale(${currentZoom})`;
 }
 
 // make functions globally available
