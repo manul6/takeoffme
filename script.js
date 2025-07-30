@@ -119,87 +119,75 @@ function createPath(coordinates, closed = true) {
     return pathData;
 }
 
-// create circuit-board flight path with prominent 45-degree angles
+// create circuit-board flight path using same logic as country borders
 function createFlightPath(from, to) {
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const absDx = Math.abs(dx);
-    const absDy = Math.abs(dy);
+    // create waypoints for the flight path using circuit board routing
+    const waypoints = [from];
     
-    let pathData = `M ${from.x} ${from.y}`;
+    // apply the same routing logic as createPath but for flight waypoints
+    let current = { x: from.x, y: from.y };
+    let target = { x: to.x, y: to.y };
     
-    // for very short distances or perfect diagonals, use direct line
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < GRID_SIZE * 8 || absDx === absDy) {
-        pathData += ` L ${to.x} ${to.y}`;
-        return pathData;
-    }
-    
-    // ensure every flight gets substantial diagonal segments
-    // use 1/3 of the smaller dimension for diagonal length, with minimum
-    const minDiagonal = GRID_SIZE * 6; // minimum diagonal segment length
-    const maxDiagonal = Math.min(absDx, absDy) * 0.7; // maximum 70% of smaller dimension
-    const diagLen = Math.max(minDiagonal, Math.min(maxDiagonal, Math.min(absDx, absDy) / 3));
-    
-    // create waypoints for multi-segment routing
-    const waypoints = [];
-    
-    if (absDx > absDy * 1.5) {
-        // mostly horizontal flight (like LAX to JFK)
-        const seg1X = from.x + (dx > 0 ? diagLen : -diagLen);
-        const seg1Y = from.y + (dy > 0 ? diagLen : -diagLen);
-        const seg2X = to.x - (dx > 0 ? diagLen : -diagLen);
-        const seg2Y = to.y - (dy > 0 ? diagLen : -diagLen);
+    while (current.x !== target.x || current.y !== target.y) {
+        const dx = target.x - current.x;
+        const dy = target.y - current.y;
         
-        waypoints.push(
-            { x: snap(seg1X), y: from.y },           // horizontal start
-            { x: snap(seg1X), y: snap(seg1Y) },      // 45° diagonal down/up
-            { x: snap(seg2X), y: snap(seg1Y) },      // horizontal middle  
-            { x: snap(seg2X), y: snap(seg2Y) },      // 45° diagonal up/down
-            { x: to.x, y: snap(seg2Y) },             // horizontal end
-            { x: to.x, y: to.y }                     // final vertical
-        );
-    } else if (absDy > absDx * 1.5) {
-        // mostly vertical flight
-        const seg1X = from.x + (dx > 0 ? diagLen : -diagLen);
-        const seg1Y = from.y + (dy > 0 ? diagLen : -diagLen);
-        const seg2X = to.x - (dx > 0 ? diagLen : -diagLen);
-        const seg2Y = to.y - (dy > 0 ? diagLen : -diagLen);
+        let next;
         
-        waypoints.push(
-            { x: from.x, y: snap(seg1Y) },           // vertical start
-            { x: snap(seg1X), y: snap(seg1Y) },      // 45° diagonal right/left
-            { x: snap(seg1X), y: snap(seg2Y) },      // vertical middle
-            { x: snap(seg2X), y: snap(seg2Y) },      // 45° diagonal left/right  
-            { x: snap(seg2X), y: to.y },             // vertical end
-            { x: to.x, y: to.y }                     // final horizontal
-        );
-    } else {
-        // balanced flight - use stepped diagonal routing
-        const steps = 4;
-        const stepX = dx / steps;
-        const stepY = dy / steps;
-        
-        // create stepped diagonal path with occasional orthogonal segments
-        for (let i = 1; i <= steps; i++) {
-            const progress = i / steps;
-            let nextX = from.x + stepX * i;
-            let nextY = from.y + stepY * i;
+        // use exact same logic as createPath function
+        if (dx === 0 || dy === 0) {
+            // direct horizontal or vertical line
+            next = { x: target.x, y: target.y };
+        } else if (Math.abs(dx) === Math.abs(dy)) {
+            // perfect 45-degree diagonal
+            next = { x: target.x, y: target.y };
+        } else if (Math.abs(dx - dy) <= GRID_SIZE) {
+            // close to 45-degree - use diagonal
+            next = { x: target.x, y: target.y };
+        } else {
+            // use circuit board routing with 45-degree segments when beneficial
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+            const minDist = Math.min(absDx, absDy);
             
-            // add some orthogonal variation for circuit board effect
-            if (i === 2) {
-                // add a horizontal segment in the middle
-                waypoints.push({ x: snap(nextX), y: snap(from.y + stepY * (i - 0.5)) });
+            if (minDist >= GRID_SIZE * 2) {
+                // use 45-degree diagonal + orthogonal routing
+                const diagLen = Math.floor(minDist * 0.6 / GRID_SIZE) * GRID_SIZE;
+                const diagX = current.x + (dx > 0 ? diagLen : -diagLen);
+                const diagY = current.y + (dy > 0 ? diagLen : -diagLen);
+                
+                // diagonal segment first
+                next = { x: diagX, y: diagY };
+            } else {
+                // traditional orthogonal routing for small segments
+                if (absDx > absDy) {
+                    next = { x: target.x, y: current.y };
+                } else {
+                    next = { x: current.x, y: target.y };
+                }
             }
-            
-            waypoints.push({ x: snap(nextX), y: snap(nextY) });
+        }
+        
+        waypoints.push(next);
+        current = next;
+        
+        // safety check to prevent infinite loops
+        if (waypoints.length > 10) {
+            waypoints.push(target);
+            break;
         }
     }
     
-    // generate path through waypoints
-    waypoints.forEach(point => {
-        pathData += ` L ${point.x} ${point.y}`;
-    });
+    // ensure final destination is included  
+    if (waypoints[waypoints.length - 1].x !== to.x || waypoints[waypoints.length - 1].y !== to.y) {
+        waypoints.push(to);
+    }
+    
+    // convert waypoints to path data
+    let pathData = `M ${waypoints[0].x} ${waypoints[0].y}`;
+    for (let i = 1; i < waypoints.length; i++) {
+        pathData += ` L ${waypoints[i].x} ${waypoints[i].y}`;
+    }
     
     return pathData;
 }
