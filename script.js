@@ -221,7 +221,7 @@ function createPath(coordinates, closed = true) {
 
 
 
-// render raw country outlines with horizontal wrapping
+// render raw country outlines 
 function renderCountries() {
     const svg = document.getElementById('map');
     const countriesGroup = document.getElementById('countries-group') || 
@@ -233,7 +233,7 @@ function renderCountries() {
     let totalPaths = 0;
     
     // render countries in original position and wrapped positions
-    for (const offset of [-MAP_WIDTH, 0, MAP_WIDTH]) {
+    for (const offset of [0]) {
         for (const [countryName, countryData] of Object.entries(countries)) {
             if (!countryData.polygons || countryData.polygons.length === 0) continue;
             
@@ -258,7 +258,7 @@ function renderCountries() {
     }
     
     svg.appendChild(countriesGroup);
-    console.log(`rendered ${totalPaths} country polygons with horizontal wrapping`);
+    console.log(`rendered ${totalPaths} country polygons `);
 }
 
 // create svg path string with horizontal offset for wrapping
@@ -333,7 +333,7 @@ function createPathWithOffset(coordinates, xOffset) {
     return pathData;
 }
 
-// render flights with horizontal wrapping
+// render flights 
 function renderFlights() {
     const svg = document.getElementById('map');
     let flightsGroup = document.getElementById('flights-group');
@@ -347,7 +347,7 @@ function renderFlights() {
     flightsGroup.innerHTML = ''; // clear existing
     
     // render flights in original position and wrapped positions
-    for (const offset of [-MAP_WIDTH, 0, MAP_WIDTH]) {
+    for (const offset of [0]) {
         activeFlights.forEach((flight, index) => {
             const fromAirport = airports[flight.from];
             const toAirport = airports[flight.to];
@@ -384,7 +384,7 @@ function renderFlights() {
         });
     }
     
-    console.log(`rendered ${activeFlights.length} flights with horizontal wrapping`);
+    console.log(`rendered ${activeFlights.length} flights `);
 }
 
 // create flight path with horizontal offset for wrapping
@@ -693,8 +693,8 @@ function panMap(deltaX, deltaY) {
     currentPanX += deltaX;
     currentPanY += deltaY;
     
-    // implement horizontal wrapping
-    const mapWidthScaled = MAP_WIDTH * currentZoom;
+    // horizontal wrapping disabled
+    const mapWidthScaled = Infinity;
     if (currentPanX > mapWidthScaled / 2) {
         currentPanX -= mapWidthScaled;
     } else if (currentPanX < -mapWidthScaled / 2) {
