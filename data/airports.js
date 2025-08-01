@@ -9,9 +9,32 @@ function validateAirportCoordinate(code, lat, lon) {
 }
 
 const airportData = {
+    // multi-airport city location codes (most popular)
+    'MOW': { name: 'moscow all airports', region: 'moscow', country: 'RU', icao: '', lat: 55.7558, lon: 37.6176, type: 'city' },
+    'LON': { name: 'london all airports', region: 'london', country: 'GB', icao: '', lat: 51.5074, lon: -0.1278, type: 'city' },
+    'NYC': { name: 'new york city all airports', region: 'new york', country: 'US', icao: '', lat: 40.7128, lon: -74.0060, type: 'city' },
+    'PAR': { name: 'paris all airports', region: 'paris', country: 'FR', icao: '', lat: 48.8566, lon: 2.3522, type: 'city' },
+    'TYO': { name: 'tokyo all airports', region: 'tokyo', country: 'JP', icao: '', lat: 35.6762, lon: 139.6503, type: 'city' },
+    'MIL': { name: 'milan all airports', region: 'milan', country: 'IT', icao: '', lat: 45.4642, lon: 9.1900, type: 'city' },
+    'BER': { name: 'berlin all airports', region: 'berlin', country: 'DE', icao: '', lat: 52.5200, lon: 13.4050, type: 'city' },
+    'ROM': { name: 'rome all airports', region: 'rome', country: 'IT', icao: '', lat: 41.9028, lon: 12.4964, type: 'city' },
+    'CHI': { name: 'chicago all airports', region: 'chicago', country: 'US', icao: '', lat: 41.8781, lon: -87.6298, type: 'city' },
+    'WAS': { name: 'washington dc all airports', region: 'washington', country: 'US', icao: '', lat: 38.9072, lon: -77.0369, type: 'city' },
+    'YTO': { name: 'toronto all airports', region: 'toronto', country: 'CA', icao: '', lat: 43.6532, lon: -79.3832, type: 'city' },
+    'SAO': { name: 'sao paulo all airports', region: 'sao paulo', country: 'BR', icao: '', lat: -23.5558, lon: -46.6396, type: 'city' },
+    'BUE': { name: 'buenos aires all airports', region: 'buenos aires', country: 'AR', icao: '', lat: -34.6118, lon: -58.3960, type: 'city' },
+    'RIO': { name: 'rio de janeiro all airports', region: 'rio de janeiro', country: 'BR', icao: '', lat: -22.9068, lon: -43.1729, type: 'city' },
+    'STO': { name: 'stockholm all airports', region: 'stockholm', country: 'SE', icao: '', lat: 59.3293, lon: 18.0686, type: 'city' },
+    'OSL': { name: 'oslo all airports', region: 'oslo', country: 'NO', icao: '', lat: 59.9139, lon: 10.7522, type: 'city' },
+    'BRU': { name: 'brussels all airports', region: 'brussels', country: 'BE', icao: '', lat: 50.8503, lon: 4.3517, type: 'city' },
+    'DUS': { name: 'dusseldorf all airports', region: 'dusseldorf', country: 'DE', icao: '', lat: 51.2277, lon: 6.7735, type: 'city' },
+    'MUC': { name: 'munich all airports', region: 'munich', country: 'DE', icao: '', lat: 48.1351, lon: 11.5820, type: 'city' },
+    'BAR': { name: 'barcelona all airports', region: 'barcelona', country: 'ES', icao: '', lat: 41.3851, lon: 2.1734, type: 'city' },
+    
+    // individual airports
     'AAA': { name: 'anaa airport', region: 'iles tuamotu-gambier', country: 'PF', icao: 'NTGA', lat: -17.3526, lon: -145.51 },
     'AAB': { name: 'arrabury airport', region: 'queensland', country: 'AU', icao: 'YARY', lat: -26.693, lon: 141.048 },
-    'AAC': { name: 'el arish international airport', region: 'shamal sina\'', country: 'EG', icao: 'HEAR', lat: 31.0733, lon: 33.8358 },
+    'AAC': { name: 'el arish international airport', region: 'shamal sina', country: 'EG', icao: 'HEAR', lat: 31.0733, lon: 33.8358 },
     'AAD': { name: 'adado airport', region: 'galguduud', country: 'SO', icao: '', lat: 6.0958, lon: 46.6375 },
     'AAE': { name: 'rabah bitat airport (les salines airport)', region: 'annaba', country: 'DZ', icao: 'DABB', lat: 36.8222, lon: 7.80917 },
     'AAF': { name: 'apalachicola regional airport', region: 'florida', country: 'US', icao: 'KAAF', lat: 29.7275, lon: -85.0275 },
