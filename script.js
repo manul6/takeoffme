@@ -1,30 +1,18 @@
-// circuit board flight map - main application logic
 import { countries } from './data/countries.js';
 import { airports } from './data/airports.js';
 
-// svg dimensions and projection settings
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 500;
-const GRID_SIZE = 4; // 4px grid for circuit paths
+const GRID_SIZE = 4;
 
-// zoom and pan state
-let currentZoom = 1;
-let currentPanX = 0;
-let currentPanY = 0;
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 8;
-
-// map container element reference (set during setup)
 let mapContainerElement = null;
-
-// active flights storage with localStorage persistence
 let activeFlights = [];
 
 function saveFlightsToStorage() {
     try {
         localStorage.setItem('circuitFlights', JSON.stringify(activeFlights));
     } catch (error) {
-        console.warn('failed to save flights to localStorage:', error);
+        // localStorage not available
     }
 }
 
@@ -33,21 +21,25 @@ function loadFlightsFromStorage() {
         const stored = localStorage.getItem('circuitFlights');
         if (stored) {
             activeFlights = JSON.parse(stored);
-            console.log(`loaded ${activeFlights.length} flights from storage`);
         }
     } catch (error) {
-        console.warn('failed to load flights from localStorage:', error);
         activeFlights = [];
     }
 }
 
-// great circle calculation functions for accurate flight paths
 function toRadians(degrees) {
     return degrees * Math.PI / 180;
 }
 
 function toDegrees(radians) {
     return radians * 180 / Math.PI;
+}
+
+// normalize longitude to [-180, 180] range
+function normalizeLongitude(lon) {
+    while (lon > 180) lon -= 360;
+    while (lon < -180) lon += 360;
+    return lon;
 }
 
 function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
@@ -87,9 +79,9 @@ function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
         const f = i / numPoints;
         
         if (f === 0) {
-            points.push([((lon1 + 180) % 360) - 180, lat1]); // normalize output
+            points.push([normalizeLongitude(lon1), lat1]);
         } else if (f === 1) {
-            points.push([((lon2 + 180) % 360) - 180, lat2]); // normalize output
+            points.push([normalizeLongitude(lon2), lat2]);
         } else {
             // intermediate point calculation
             const A = Math.sin((1-f)*c) / Math.sin(c);
@@ -102,8 +94,8 @@ function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
             const φ = Math.atan2(z, Math.sqrt(x*x + y*y));
             const λ = Math.atan2(y, x);
             
-            const normalizedLon = ((toDegrees(λ) + 180) % 360) - 180;
-            points.push([normalizedLon, toDegrees(φ)]);
+            const lon = normalizeLongitude(toDegrees(λ));
+            points.push([lon, toDegrees(φ)]);
         }
     }
     
@@ -131,6 +123,8 @@ function project(lat, lon) {
     
     const x = (clampedLon + 180) * (MAP_WIDTH / 360);
     const y = (90 - clampedLat) * (MAP_HEIGHT / 180);
+    
+
     
     return { x: x, y: y };
 }
@@ -221,6 +215,8 @@ function createPath(coordinates, closed = true) {
 
 
 
+
+
 // render raw country outlines 
 function renderCountries() {
     const svg = document.getElementById('map');
@@ -258,7 +254,6 @@ function renderCountries() {
     }
     
     svg.appendChild(countriesGroup);
-    console.log(`rendered ${totalPaths} country polygons `);
 }
 
 // create svg path string with horizontal offset for wrapping
@@ -383,8 +378,6 @@ function renderFlights() {
             });
         });
     }
-    
-    console.log(`rendered ${activeFlights.length} flights `);
 }
 
 // create flight path with horizontal offset for wrapping
@@ -396,73 +389,87 @@ function createFlightPathWithOffset(fromAirport, toAirport, xOffset) {
         15 // number of intermediate points for smooth arc
     );
     
-    // convert arc points to screen coordinates and apply circuit board routing with offset
-    const waypoints = [];
+    // convert arc points to screen coordinates and detect edge crossings
+    const pathSegments = [];
+    let currentSegment = [];
     
     for (let i = 0; i < arcPoints.length; i++) {
         const [lon, lat] = arcPoints[i];
         const screenPoint = projectAndSnap(lat, lon);
-        const offsetPoint = { x: screenPoint.x + xOffset, y: screenPoint.y };
+        const point = { x: screenPoint.x + xOffset, y: screenPoint.y };
         
         if (i === 0) {
-            waypoints.push(offsetPoint);
+            currentSegment.push(point);
         } else {
-            // route from previous waypoint to current arc point using circuit board rules
-            let current = waypoints[waypoints.length - 1];
-            const targetX = offsetPoint.x;
-            const targetY = offsetPoint.y;
+            const [prevLon, prevLat] = arcPoints[i - 1];
+            const [currLon, currLat] = arcPoints[i];
             
-            const dx = targetX - current.x;
-            const dy = targetY - current.y;
+            // detect date line crossing using actual longitude coordinates
+            const lonDiff = currLon - prevLon;
             
-            // apply circuit board routing between consecutive arc points
-            if (dx === 0 || dy === 0) {
-                // direct horizontal or vertical
-                waypoints.push({ x: targetX, y: targetY });
-            } else if (Math.abs(dx) === Math.abs(dy)) {
-                // perfect 45-degree diagonal
-                waypoints.push({ x: targetX, y: targetY });
+            if (Math.abs(lonDiff) > 180) {
+                // we're crossing the date line - end current segment and start new one
+                if (currentSegment.length > 1) {
+                    pathSegments.push([...currentSegment]);
+                }
+                currentSegment = [point]; // start new segment from current point
             } else {
-                // use circuit board routing with small segments
-                const absDx = Math.abs(dx);
-                const absDy = Math.abs(dy);
-                const minDist = Math.min(absDx, absDy);
+                // normal segment - apply circuit board routing
+                const prevPoint = currentSegment[currentSegment.length - 1];
+                const targetX = point.x;
+                const targetY = point.y;
+                const dx = targetX - prevPoint.x;
+                const dy = targetY - prevPoint.y;
                 
-                if (minDist >= GRID_SIZE) {
-                    // create 45-degree diagonal segment first
-                    const diagLen = Math.min(minDist, GRID_SIZE * 3);
-                    const diagX = current.x + (dx > 0 ? diagLen : -diagLen);
-                    const diagY = current.y + (dy > 0 ? diagLen : -diagLen);
+                // apply circuit board routing between consecutive arc points
+                if (dx === 0 || dy === 0) {
+                    // direct horizontal or vertical
+                    currentSegment.push({ x: targetX, y: targetY });
+                } else if (Math.abs(dx) === Math.abs(dy)) {
+                    // perfect 45-degree diagonal
+                    currentSegment.push({ x: targetX, y: targetY });
+                } else {
+                    // use circuit board routing with small segments
+                    const absDx = Math.abs(dx);
+                    const absDy = Math.abs(dy);
+                    const minDist = Math.min(absDx, absDy);
                     
-                    waypoints.push({ x: diagX, y: diagY });
-                    
-                    // then complete the path orthogonally
-                    if (diagX !== targetX && diagY !== targetY) {
-                        if (absDx > absDy) {
-                            waypoints.push({ x: targetX, y: diagY });
-                            if (targetY !== diagY) {
-                                waypoints.push({ x: targetX, y: targetY });
+                    if (minDist >= GRID_SIZE) {
+                        // create 45-degree diagonal segment first
+                        const diagLen = Math.min(minDist, GRID_SIZE * 3);
+                        const diagX = prevPoint.x + (dx > 0 ? diagLen : -diagLen);
+                        const diagY = prevPoint.y + (dy > 0 ? diagLen : -diagLen);
+                        
+                        currentSegment.push({ x: diagX, y: diagY });
+                        
+                        // then complete the path orthogonally
+                        if (diagX !== targetX && diagY !== targetY) {
+                            if (absDx > absDy) {
+                                currentSegment.push({ x: targetX, y: diagY });
+                                if (targetY !== diagY) {
+                                    currentSegment.push({ x: targetX, y: targetY });
+                                }
+                            } else {
+                                currentSegment.push({ x: diagX, y: targetY });
+                                if (targetX !== diagX) {
+                                    currentSegment.push({ x: targetX, y: targetY });
+                                }
                             }
                         } else {
-                            waypoints.push({ x: diagX, y: targetY });
-                            if (targetX !== diagX) {
-                                waypoints.push({ x: targetX, y: targetY });
+                            currentSegment.push({ x: targetX, y: targetY });
+                        }
+                    } else {
+                        // small segment - use orthogonal routing
+                        if (absDx > absDy) {
+                            currentSegment.push({ x: targetX, y: prevPoint.y });
+                            if (targetY !== prevPoint.y) {
+                                currentSegment.push({ x: targetX, y: targetY });
                             }
-                        }
-                    } else {
-                        waypoints.push({ x: targetX, y: targetY });
-                    }
-                } else {
-                    // small segment - use orthogonal routing
-                    if (absDx > absDy) {
-                        waypoints.push({ x: targetX, y: current.y });
-                        if (targetY !== current.y) {
-                            waypoints.push({ x: targetX, y: targetY });
-                        }
-                    } else {
-                        waypoints.push({ x: current.x, y: targetY });
-                        if (targetX !== current.x) {
-                            waypoints.push({ x: targetX, y: targetY });
+                        } else {
+                            currentSegment.push({ x: prevPoint.x, y: targetY });
+                            if (targetX !== prevPoint.x) {
+                                currentSegment.push({ x: targetX, y: targetY });
+                            }
                         }
                     }
                 }
@@ -470,10 +477,20 @@ function createFlightPathWithOffset(fromAirport, toAirport, xOffset) {
         }
     }
     
-    // convert waypoints to path data
-    let pathData = `M ${waypoints[0].x} ${waypoints[0].y}`;
-    for (let i = 1; i < waypoints.length; i++) {
-        pathData += ` L ${waypoints[i].x} ${waypoints[i].y}`;
+    // add the final segment
+    if (currentSegment.length > 0) {
+        pathSegments.push(currentSegment);
+    }
+    
+    // convert all segments to path data
+    let pathData = '';
+    for (const segment of pathSegments) {
+        if (segment.length > 1) {
+            pathData += `M ${segment[0].x} ${segment[0].y}`;
+            for (let i = 1; i < segment.length; i++) {
+                pathData += ` L ${segment[i].x} ${segment[i].y}`;
+            }
+        }
     }
     
     return pathData;
@@ -509,7 +526,6 @@ function addFlight(fromCode, toCode) {
     renderFlights();
     updateFlightList();
     
-    console.log(`added flight: ${fromCode} -> ${toCode}`);
     return true;
 }
 
@@ -520,7 +536,6 @@ function removeFlight(index) {
         saveFlightsToStorage();
         renderFlights();
         updateFlightList();
-        console.log(`removed flight: ${flight.from} -> ${flight.to}`);
     }
 }
 
@@ -548,12 +563,8 @@ function updateFlightList() {
 
 // initialize map
 function initializeMap() {
-    console.log('initializing circuit board flight map...');
-    
-    // load saved flights from localStorage
     loadFlightsFromStorage();
     
-    // validate airport data
     let validAirports = 0;
     for (const [code, airport] of Object.entries(airports)) {
         try {
@@ -564,14 +575,10 @@ function initializeMap() {
         }
     }
     
-    console.log(`loaded ${validAirports} valid airports`);
-    
-    // render initial map
     renderCountries();
     renderFlights();
     updateFlightList();
     
-    // setup form handler
     const flightForm = document.getElementById('flight-form');
     flightForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -591,150 +598,14 @@ function initializeMap() {
             alert('please enter valid, different airport codes');
         }
     });
-    
-    // setup zoom and pan functionality
-    setupZoomAndPan();
-    
-    console.log('flight map initialized successfully');
 }
 
-// zoom and pan functionality
-function setupZoomAndPan() {
-    const svg = document.getElementById('map');
-    const mapContainer = document.querySelector('.map-container');
-    mapContainerElement = mapContainer;
-    
-    // create zoom controls
-    const zoomControls = document.createElement('div');
-    zoomControls.className = 'zoom-controls';
-    zoomControls.innerHTML = `
-        <button id="zoom-in" class="zoom-btn">+</button>
-        <button id="zoom-out" class="zoom-btn">−</button>
-        <button id="zoom-reset" class="zoom-btn">⌂</button>
-    `;
-    mapContainer.appendChild(zoomControls);
-    
-    // zoom control handlers
-    document.getElementById('zoom-in').addEventListener('click', () => zoomMap(1.5));
-    document.getElementById('zoom-out').addEventListener('click', () => zoomMap(1/1.5));
-    document.getElementById('zoom-reset').addEventListener('click', () => resetZoom());
-    
-    // mouse wheel zoom
-    svg.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-        zoomMap(zoomFactor, e.offsetX, e.offsetY);
-    });
-    
-    // mouse pan
-    let isPanning = false;
-    let lastMouseX = 0;
-    let lastMouseY = 0;
-    
-    svg.addEventListener('mousedown', (e) => {
-        if (e.button === 0) { // left click
-            e.preventDefault();
-            e.stopPropagation();
-            isPanning = true;
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
-            svg.style.cursor = 'grabbing';
-            console.log('started panning');
-        }
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-        if (isPanning) {
-            e.preventDefault();
-            e.stopPropagation();
-            const deltaX = e.clientX - lastMouseX;
-            const deltaY = e.clientY - lastMouseY;
-            console.log(`panning: deltaX=${deltaX}, deltaY=${deltaY}`);
-            panMap(deltaX, deltaY);
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
-        }
-    });
-    
-    document.addEventListener('mouseup', (e) => {
-        if (isPanning) {
-            e.preventDefault();
-            e.stopPropagation();
-            isPanning = false;
-            svg.style.cursor = 'grab';
-            console.log('stopped panning');
-        }
-    });
-    
-    // prevent context menu on right click
-    svg.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-    });
-    
-    // initial cursor
-    svg.style.cursor = 'grab';
-}
 
-function zoomMap(factor, centerX = null, centerY = null) {
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom * factor));
-    
-    if (centerX !== null && centerY !== null) {
-        // zoom to specific point
-        const zoomRatio = newZoom / currentZoom;
-        currentPanX = centerX - (centerX - currentPanX) * zoomRatio;
-        currentPanY = centerY - (centerY - currentPanY) * zoomRatio;
-    }
-    
-    currentZoom = newZoom;
-    updateMapTransform();
-}
 
-function panMap(deltaX, deltaY) {
-    currentPanX += deltaX;
-    currentPanY += deltaY;
-    
-    // horizontal wrapping disabled
-    const mapWidthScaled = Infinity;
-    if (currentPanX > mapWidthScaled / 2) {
-        currentPanX -= mapWidthScaled;
-    } else if (currentPanX < -mapWidthScaled / 2) {
-        currentPanX += mapWidthScaled;
-    }
-    
-    // dynamic vertical panning limits based on container height
-    if (mapContainerElement) {
-        const containerHeight = mapContainerElement.clientHeight;
-        const scaledHeight = MAP_HEIGHT * currentZoom;
-        // allow the map to move so that it can fully exit the view but not much more
-        const maxPanY = Math.max(0, (scaledHeight - containerHeight) / 2) + 100; // 100px extra margin
-        currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
-    }
-    
-    updateMapTransform();
-}
-
-function resetZoom() {
-    currentZoom = 1;
-    currentPanX = 0;
-    currentPanY = 0;
-    updateMapTransform();
-}
-
-function updateMapTransform() {
-    const svg = document.getElementById('map');
-    // ensure consistent panning regardless of zoom by translating in unscaled units
-    svg.style.transformOrigin = '0 0';
-    const translateX = currentPanX;
-    const translateY = currentPanY;
-    svg.style.transform = `translate(${currentPanX}px, ${currentPanY}px) scale(${currentZoom})`;
-}
-
-// make functions globally available
 window.addFlight = addFlight;
 window.removeFlight = removeFlight;
 window.initializeMap = initializeMap;
 
-// initialize when dom loaded
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initializeMap);
 } else {

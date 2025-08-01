@@ -69,42 +69,7 @@ body {
     border: 1px solid var(--pcb-green);
 }
 
-/* zoom controls */
-.zoom-controls {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    z-index: 100;
-}
 
-.zoom-btn {
-    width: 32px;
-    height: 32px;
-    background: var(--pcb-dark);
-    border: 1px solid var(--pcb-green);
-    color: var(--pcb-green);
-    font-size: 16px;
-    font-weight: bold;
-    cursor: pointer;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.zoom-btn:hover {
-    background: var(--pcb-green);
-    color: var(--pcb-black);
-    box-shadow: 0 0 8px var(--pcb-green);
-}
-
-.zoom-btn:active {
-    transform: scale(0.95);
-}
 
 .controls-panel {
     background: var(--pcb-dark);
