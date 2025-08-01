@@ -9152,15 +9152,19 @@ const airportData = {
     'ZWL': { name: 'wollaston lake airport', region: 'saskatchewan', country: 'CA', icao: 'CZWL', lat: 58.1069, lon: -103.172 },
     'ZYI': { name: 'zunyi xinzhou airport', region: 'guizhou', country: 'CN', icao: 'ZUZY', lat: 27.5895, lon: 107.001 },
     'ZYL': { name: 'osmani international airport', region: 'sylhet', country: 'BD', icao: 'VGSY', lat: 24.9632, lon: 91.8668 },
-    'ZZO': { name: 'zonalnoye airport', region: 'sakhalinskaya oblast\'', country: 'RU', icao: 'UHSO', lat: 50.6692, lon: 142.761 },
+    'ZZO': { name: 'zonalnoye airport', region: 'sakhalinskaya oblast', country: 'RU', icao: 'UHSO', lat: 50.6692, lon: 142.761 },
     'ZZU': { name: 'mzuzu airport', region: 'mzimba', country: 'MW', icao: 'FWUU', lat: -11.4447, lon: 34.0118 },
     'ZZV': { name: 'zanesville municipal airport', region: 'ohio', country: 'US', icao: 'KZZV', lat: 39.9444, lon: -81.8921 }
 };
 
-// validate all airport coordinates
+// validate all airport coordinates and add city property for ui compatibility
 for (const [code, airport] of Object.entries(airportData)) {
     try {
         validateAirportCoordinate(code, airport.lat, airport.lon);
+        // add city property for ui compatibility (copy from region)
+        if (!airport.city) {
+            airport.city = airport.region;
+        }
     } catch (error) {
         console.error(`airport validation failed: ${error.message}`);
         delete airportData[code];
