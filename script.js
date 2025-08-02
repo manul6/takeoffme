@@ -254,8 +254,8 @@ function initializePanZoom() {
             const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
             const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
             
-            currentPanX -= deltaX * panFactorX;
-            currentPanY -= deltaY * panFactorY;
+            currentPanX += deltaX * panFactorX;
+            currentPanY += deltaY * panFactorY;
             
             lastMouseX = e.clientX;
             lastMouseY = e.clientY;
@@ -329,8 +329,8 @@ function initializePanZoom() {
             const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
             const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
             
-            currentPanX -= deltaX * panFactorX;
-            currentPanY -= deltaY * panFactorY;
+            currentPanX += deltaX * panFactorX;
+            currentPanY += deltaY * panFactorY;
             
             lastMouseX = e.touches[0].clientX;
             lastMouseY = e.touches[0].clientY;
