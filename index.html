@@ -14,13 +14,23 @@
         </header>
         
         <main class="main-content">
-            <div class="map-container">
+            <div class="map-container" id="map-container">
                 <svg id="map" viewBox="0 0 1000 500" class="flight-map">
                     <!-- continent outlines will be rendered here -->
                     <!-- flight paths will be rendered here -->
                 </svg>
                 
                 <div class="grid-overlay"></div>
+                
+                <div class="zoom-controls">
+                    <button class="zoom-btn" id="zoom-in" title="zoom in">+</button>
+                    <button class="zoom-btn" id="zoom-out" title="zoom out">-</button>
+                    <button class="zoom-btn" id="zoom-reset" title="reset view">⌂</button>
+                </div>
+                
+                <div class="zoom-info" id="zoom-info">
+                    zoom: 100% | pan: drag to move
+                </div>
             </div>
             
             <div class="controls-panel">
@@ -66,6 +76,8 @@
                         <li>click "add flight" to draw connection</li>
                         <li>use × button to remove flights</li>
                         <li>all coordinates snap to grid</li>
+                        <li>drag map to pan, wheel to zoom</li>
+                        <li>use +/- buttons or ⌂ to reset view</li>
                     </ul>
                     
                     <details class="airport-codes">

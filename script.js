@@ -8,6 +8,21 @@ const GRID_SIZE = 4;
 let mapContainerElement = null;
 let activeFlights = [];
 
+// pan and zoom state
+let currentZoom = 1;
+let currentPanX = 0;
+let currentPanY = 0;
+let isPanning = false;
+let lastMouseX = 0;
+let lastMouseY = 0;
+let svgElement = null;
+let mapContainer = null;
+
+// zoom constraints
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 8;
+const ZOOM_STEP = 0.2;
+
 function saveFlightsToStorage() {
     try {
         localStorage.setItem('circuitFlights', JSON.stringify(activeFlights));
@@ -141,6 +156,223 @@ function projectAndSnap(lat, lon) {
         x: snap(projected.x),
         y: snap(projected.y)
     };
+}
+
+// pan and zoom functionality
+function updateViewBox() {
+    if (!svgElement) return;
+    
+    const scaledWidth = MAP_WIDTH / currentZoom;
+    const scaledHeight = MAP_HEIGHT / currentZoom;
+    
+    // clamp pan to prevent showing empty space
+    const maxPanX = Math.max(0, (MAP_WIDTH - scaledWidth) / 2);
+    const maxPanY = Math.max(0, (MAP_HEIGHT - scaledHeight) / 2);
+    
+    currentPanX = Math.max(-maxPanX, Math.min(maxPanX, currentPanX));
+    currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
+    
+    const viewBoxX = (MAP_WIDTH - scaledWidth) / 2 - currentPanX;
+    const viewBoxY = (MAP_HEIGHT - scaledHeight) / 2 - currentPanY;
+    
+    svgElement.setAttribute('viewBox', `${viewBoxX} ${viewBoxY} ${scaledWidth} ${scaledHeight}`);
+    
+    // update zoom info display
+    const zoomInfo = document.getElementById('zoom-info');
+    if (zoomInfo) {
+        const zoomPercent = Math.round(currentZoom * 100);
+        zoomInfo.textContent = `zoom: ${zoomPercent}% | pan: drag to move`;
+    }
+}
+
+function zoomToPoint(zoomDelta, clientX, clientY) {
+    if (!svgElement || !mapContainer) return;
+    
+    const rect = mapContainer.getBoundingClientRect();
+    const svgX = (clientX - rect.left) / rect.width * MAP_WIDTH;
+    const svgY = (clientY - rect.top) / rect.height * MAP_HEIGHT;
+    
+    const oldZoom = currentZoom;
+    currentZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + zoomDelta));
+    
+    if (currentZoom !== oldZoom) {
+        // adjust pan to zoom towards the mouse cursor
+        const zoomRatio = currentZoom / oldZoom;
+        const centerX = MAP_WIDTH / 2;
+        const centerY = MAP_HEIGHT / 2;
+        
+        // calculate offset from center to zoom point
+        const offsetX = svgX - centerX;
+        const offsetY = svgY - centerY;
+        
+        // adjust pan to keep zoom point stationary
+        currentPanX += offsetX * (1 - 1/zoomRatio) / currentZoom;
+        currentPanY += offsetY * (1 - 1/zoomRatio) / currentZoom;
+        
+        updateViewBox();
+    }
+}
+
+function resetView() {
+    currentZoom = 1;
+    currentPanX = 0;
+    currentPanY = 0;
+    updateViewBox();
+}
+
+function initializePanZoom() {
+    svgElement = document.getElementById('map');
+    mapContainer = document.getElementById('map-container');
+    
+    if (!svgElement || !mapContainer) return;
+    
+    // mouse wheel zoom
+    mapContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+        zoomToPoint(zoomDelta, e.clientX, e.clientY);
+    });
+    
+    // mouse pan
+    mapContainer.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { // left click only
+            isPanning = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            mapContainer.classList.add('panning');
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            const deltaX = e.clientX - lastMouseX;
+            const deltaY = e.clientY - lastMouseY;
+            
+            // convert screen coordinates to svg coordinates
+            const rect = mapContainer.getBoundingClientRect();
+            const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+            const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+            
+            currentPanX -= deltaX * panFactorX;
+            currentPanY -= deltaY * panFactorY;
+            
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            
+            updateViewBox();
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            mapContainer.classList.remove('panning');
+        }
+    });
+    
+    // zoom button controls
+    document.getElementById('zoom-in').addEventListener('click', () => {
+        const rect = mapContainer.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        zoomToPoint(ZOOM_STEP, centerX, centerY);
+    });
+    
+    document.getElementById('zoom-out').addEventListener('click', () => {
+        const rect = mapContainer.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        zoomToPoint(-ZOOM_STEP, centerX, centerY);
+    });
+    
+    document.getElementById('zoom-reset').addEventListener('click', resetView);
+    
+    // touch support for mobile
+    let lastTouchDistance = 0;
+    let touchCenterX = 0;
+    let touchCenterY = 0;
+    
+    mapContainer.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            // single touch - start panning
+            isPanning = true;
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+            mapContainer.classList.add('panning');
+        } else if (e.touches.length === 2) {
+            // two finger pinch zoom
+            isPanning = false;
+            mapContainer.classList.remove('panning');
+            
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            lastTouchDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) +
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            
+            touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+            touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+        }
+        e.preventDefault();
+    });
+    
+    mapContainer.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && isPanning) {
+            // single touch panning
+            const deltaX = e.touches[0].clientX - lastMouseX;
+            const deltaY = e.touches[0].clientY - lastMouseY;
+            
+            const rect = mapContainer.getBoundingClientRect();
+            const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+            const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+            
+            currentPanX -= deltaX * panFactorX;
+            currentPanY -= deltaY * panFactorY;
+            
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+            
+            updateViewBox();
+        } else if (e.touches.length === 2) {
+            // pinch zoom
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            const currentDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) +
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            
+            if (lastTouchDistance > 0) {
+                const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
+                zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
+            }
+            
+            lastTouchDistance = currentDistance;
+            touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+            touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+        }
+        e.preventDefault();
+    });
+    
+    mapContainer.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+            isPanning = false;
+            lastTouchDistance = 0;
+            mapContainer.classList.remove('panning');
+        } else if (e.touches.length === 1) {
+            // continue panning with remaining finger
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+        }
+        e.preventDefault();
+    });
+    
+    // initialize view
+    updateViewBox();
 }
 
 // create svg path string with 0/45/90 degree circuit board routing
@@ -578,6 +810,9 @@ function initializeMap() {
     renderCountries();
     renderFlights();
     updateFlightList();
+    
+    // initialize pan and zoom functionality
+    initializePanZoom();
     
     const flightForm = document.getElementById('flight-form');
     flightForm.addEventListener('submit', (e) => {

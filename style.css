@@ -67,6 +67,15 @@ body {
     position: relative;
     overflow: hidden;
     border: 1px solid var(--pcb-green);
+    cursor: grab;
+}
+
+.map-container.panning {
+    cursor: grabbing;
+}
+
+.map-container.zooming {
+    cursor: zoom-in;
 }
 
 
@@ -84,6 +93,56 @@ body {
     height: 100%;
     display: block;
     background: var(--pcb-black);
+    user-select: none;
+}
+
+/* zoom controls */
+.zoom-controls {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 10;
+}
+
+.zoom-btn {
+    width: 32px;
+    height: 32px;
+    background: var(--pcb-dark);
+    border: 1px solid var(--pcb-green);
+    color: var(--pcb-green);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: bold;
+    transition: all 0.2s ease;
+}
+
+.zoom-btn:hover {
+    background: var(--pcb-green);
+    color: var(--pcb-black);
+}
+
+.zoom-btn:active {
+    background: var(--pcb-cyan);
+}
+
+.zoom-info {
+    position: absolute;
+    bottom: 1rem;
+    left: 1rem;
+    background: var(--pcb-dark);
+    border: 1px solid var(--pcb-green);
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--pcb-light-gray);
+    pointer-events: none;
+    font-family: inherit;
 }
 
 /* country outlines */
