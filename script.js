@@ -1,16 +1,17 @@
 import { countries } from './data/countries.js';
 import { airports } from './data/airports.js';
+import { railwayStations, railwayRoutes } from './data/railways.js';
 
 const MAP_WIDTH = 1000;
 const MAP_HEIGHT = 500;
 const BASE_GRID_SIZE = 4;
 const BASE_STROKE_WIDTH = 2;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 8;
+const ZOOM_STEP = 0.1;
+
 let currentGridSize = BASE_GRID_SIZE;
 let currentStrokeWidth = BASE_STROKE_WIDTH;
-
-let mapContainerElement = null;
-let activeFlights = [];
-
 let currentZoom = 1;
 let currentPanX = 0;
 let currentPanY = 0;
@@ -19,78 +20,78 @@ let lastMouseX = 0;
 let lastMouseY = 0;
 let svgElement = null;
 let mapContainer = null;
+let activeFlights = [];
+let activeRailways = [];
+let currentTransportMode = 'flights';
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 8;
-const ZOOM_STEP = 0.2;
-
-function saveFlightsToStorage() {
-    try {
-        localStorage.setItem('circuitFlights', JSON.stringify(activeFlights));
-    } catch (error) {
-    }
-}
-
-function loadFlightsFromStorage() {
-    try {
-        const stored = localStorage.getItem('circuitFlights');
-        if (stored) {
-            activeFlights = JSON.parse(stored);
-        }
-    } catch (error) {
-        activeFlights = [];
-    }
-}
-
-function toRadians(degrees) {
-    return degrees * Math.PI / 180;
-}
-
-function toDegrees(radians) {
-    return radians * 180 / Math.PI;
-}
-
-function normalizeLongitude(lon) {
-    while (lon > 180) lon -= 360;
-    while (lon < -180) lon += 360;
-    return lon;
-}
-
-function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
-    lon1 = ((lon1 + 180) % 360) - 180;
-    lon2 = ((lon2 + 180) % 360) - 180;
+const storage = {
+    saveFlights: () => {
+        try {
+            localStorage.setItem('circuitFlights', JSON.stringify(activeFlights));
+        } catch (error) {}
+    },
     
-    const lonDiff = lon2 - lon1;
-    if (Math.abs(lonDiff) > 180) {
-        if (lonDiff > 0) {
-            lon2 -= 360;
-        } else {
-            lon2 += 360;
+    loadFlights: () => {
+        try {
+            const stored = localStorage.getItem('circuitFlights');
+            if (stored) activeFlights = JSON.parse(stored);
+        } catch (error) {
+            activeFlights = [];
+        }
+    },
+    
+    saveRailways: () => {
+        try {
+            localStorage.setItem('circuitRailways', JSON.stringify(activeRailways));
+        } catch (error) {}
+    },
+    
+    loadRailways: () => {
+        try {
+            const stored = localStorage.getItem('circuitRailways');
+            if (stored) activeRailways = JSON.parse(stored);
+        } catch (error) {
+            activeRailways = [];
         }
     }
-    
-    const φ1 = toRadians(lat1);
-    const λ1 = toRadians(lon1);
-    const φ2 = toRadians(lat2);
-    const λ2 = toRadians(lon2);
-    
-    const Δφ = φ2 - φ1;
-    const Δλ = λ2 - λ1;
-    const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + 
-              Math.cos(φ1) * Math.cos(φ2) * 
-              Math.sin(Δλ/2) * Math.sin(Δλ/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    
-    const points = [];
-    
-    for (let i = 0; i <= numPoints; i++) {
-        const f = i / numPoints;
+};
+
+const mathUtils = {
+    toRadians: degrees => degrees * Math.PI / 180,
+    toDegrees: radians => radians * 180 / Math.PI,
+    normalizeLongitude: lon => {
+        while (lon > 180) lon -= 360;
+        while (lon < -180) lon += 360;
+        return lon;
+    }
+};
+
+const geodesy = {
+    calculateGreatCirclePoints: (lat1, lon1, lat2, lon2, numPoints = 20) => {
+        lon1 = ((lon1 + 180) % 360) - 180;
+        lon2 = ((lon2 + 180) % 360) - 180;
         
-        if (f === 0) {
-            points.push([normalizeLongitude(lon1), lat1]);
-        } else if (f === 1) {
-            points.push([normalizeLongitude(lon2), lat2]);
-        } else {
+        const lonDiff = lon2 - lon1;
+        if (Math.abs(lonDiff) > 180) {
+            lon2 += lonDiff > 0 ? -360 : 360;
+        }
+        
+        const φ1 = mathUtils.toRadians(lat1);
+        const λ1 = mathUtils.toRadians(lon1);
+        const φ2 = mathUtils.toRadians(lat2);
+        const λ2 = mathUtils.toRadians(lon2);
+        
+        const Δφ = φ2 - φ1;
+        const Δλ = λ2 - λ1;
+        const a = Math.sin(Δφ/2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) ** 2;
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        
+        return Array.from({length: numPoints + 1}, (_, i) => {
+            const f = i / numPoints;
+            
+            if (f === 0) return [mathUtils.normalizeLongitude(lon1), lat1];
+            if (f === 1) return [mathUtils.normalizeLongitude(lon2), lat2];
+            
             const A = Math.sin((1-f)*c) / Math.sin(c);
             const B = Math.sin(f*c) / Math.sin(c);
             
@@ -101,274 +102,394 @@ function calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints = 20) {
             const φ = Math.atan2(z, Math.sqrt(x*x + y*y));
             const λ = Math.atan2(y, x);
             
-            const lon = normalizeLongitude(toDegrees(λ));
-            points.push([lon, toDegrees(φ)]);
+            return [mathUtils.normalizeLongitude(mathUtils.toDegrees(λ)), mathUtils.toDegrees(φ)];
+        });
+    }
+};
+
+const projection = {
+    EPSILON: 1e-10,
+    
+    validate: (lat, lon, context = '') => {
+        if (lat < -90 - projection.EPSILON || lat > 90 + projection.EPSILON || 
+            lon < -180 - projection.EPSILON || lon > 180 + projection.EPSILON) {
+            throw new Error(`invalid coordinate ${context}: lat=${lat}, lon=${lon}`);
         }
+    },
+    
+    project: (lat, lon) => {
+        projection.validate(lat, lon, 'in projection');
+        
+        const clampedLat = Math.max(-90, Math.min(90, lat));
+        const clampedLon = Math.max(-180, Math.min(180, lon));
+        
+        return {
+            x: (clampedLon + 180) * (MAP_WIDTH / 360),
+            y: (90 - clampedLat) * (MAP_HEIGHT / 180)
+        };
+    },
+    
+    snap: (value, gridSize = currentGridSize) => 
+        Math.round(value / gridSize) * gridSize,
+    
+    projectAndSnap: (lat, lon) => {
+        const projected = projection.project(lat, lon);
+        return {
+            x: projection.snap(projected.x),
+            y: projection.snap(projected.y)
+        };
     }
-    
-    return points;
-}
+};
 
-function validateCoordinate(lat, lon, context = '') {
-    const EPSILON = 1e-10;
-    
-    if (lat < -90 - EPSILON || lat > 90 + EPSILON || 
-        lon < -180 - EPSILON || lon > 180 + EPSILON) {
-        throw new Error(`invalid coordinate ${context}: lat=${lat}, lon=${lon}`);
-    }
-}
-
-function project(lat, lon) {
-    validateCoordinate(lat, lon, 'in projection');
-    
-    const clampedLat = Math.max(-90, Math.min(90, lat));
-    const clampedLon = Math.max(-180, Math.min(180, lon));
-    
-    const x = (clampedLon + 180) * (MAP_WIDTH / 360);
-    const y = (90 - clampedLat) * (MAP_HEIGHT / 180);
-    
-    return { x: x, y: y };
-}
-
-function snap(value, gridSize = currentGridSize) {
-    return Math.round(value / gridSize) * gridSize;
-}
-
-function projectAndSnap(lat, lon) {
-    const projected = project(lat, lon);
-    return {
-        x: snap(projected.x),
-        y: snap(projected.y)
-    };
-}
-
-function updateViewBox() {
-    if (!svgElement) return;
-    
-    const scaledWidth = MAP_WIDTH / currentZoom;
-    const scaledHeight = MAP_HEIGHT / currentZoom;
-    
-    const maxPanX = Math.max(0, (MAP_WIDTH - scaledWidth) / 2);
-    const maxPanY = Math.max(0, (MAP_HEIGHT - scaledHeight) / 2);
-    
-    currentPanX = Math.max(-maxPanX, Math.min(maxPanX, currentPanX));
-    currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
-    
-    const viewBoxX = (MAP_WIDTH - scaledWidth) / 2 - currentPanX;
-    const viewBoxY = (MAP_HEIGHT - scaledHeight) / 2 - currentPanY;
-    
-    svgElement.setAttribute('viewBox', `${viewBoxX} ${viewBoxY} ${scaledWidth} ${scaledHeight}`);
-    
-    const zoomInfo = document.getElementById('zoom-info');
-    if (zoomInfo) {
-        const zoomPercent = Math.round(currentZoom * 100);
-        const gridSizePx = Math.max(1, Math.round(currentGridSize));
-        const strokeWidthPx = Math.round(currentStrokeWidth * 10) / 10;
-        zoomInfo.textContent = `zoom: ${zoomPercent}% | grid: ${gridSizePx}px | stroke: ${strokeWidthPx}px | pan: drag to move`;
-    }
-}
-
-function updateGridOverlay() {
-    const gridOverlay = document.querySelector('.grid-overlay');
-    if (gridOverlay) {
-        const gridSizePx = Math.max(1, Math.round(currentGridSize));
-        gridOverlay.style.backgroundSize = `${gridSizePx}px ${gridSizePx}px`;
-    }
-}
-
-function zoomToPoint(zoomDelta, clientX, clientY) {
-    if (!svgElement || !mapContainer) return;
-    
-    const rect = mapContainer.getBoundingClientRect();
-    const svgX = (clientX - rect.left) / rect.width * MAP_WIDTH;
-    const svgY = (clientY - rect.top) / rect.height * MAP_HEIGHT;
-    
-    const oldZoom = currentZoom;
-    currentZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + zoomDelta));
-    
-    if (currentZoom !== oldZoom) {
-        const zoomRatio = currentZoom / oldZoom;
-        const centerX = MAP_WIDTH / 2;
-        const centerY = MAP_HEIGHT / 2;
+const viewManager = {
+    updateViewBox: () => {
+        if (!svgElement) return;
         
-        const offsetX = svgX - centerX;
-        const offsetY = svgY - centerY;
+        const scaledWidth = MAP_WIDTH / currentZoom;
+        const scaledHeight = MAP_HEIGHT / currentZoom;
+        const maxPanX = Math.max(0, (MAP_WIDTH - scaledWidth) / 2);
+        const maxPanY = Math.max(0, (MAP_HEIGHT - scaledHeight) / 2);
         
-        currentPanX += offsetX * (1 - 1/zoomRatio) / currentZoom;
-        currentPanY += offsetY * (1 - 1/zoomRatio) / currentZoom;
+        currentPanX = Math.max(-maxPanX, Math.min(maxPanX, currentPanX));
+        currentPanY = Math.max(-maxPanY, Math.min(maxPanY, currentPanY));
         
-        currentGridSize = BASE_GRID_SIZE / currentZoom;
-        currentStrokeWidth = Math.max(0.5, BASE_STROKE_WIDTH / currentZoom);
+        const viewBoxX = (MAP_WIDTH - scaledWidth) / 2 - currentPanX;
+        const viewBoxY = (MAP_HEIGHT - scaledHeight) / 2 - currentPanY;
         
-        updateViewBox();
-        updateGridOverlay();
+        svgElement.setAttribute('viewBox', `${viewBoxX} ${viewBoxY} ${scaledWidth} ${scaledHeight}`);
         
+        const zoomInfo = document.getElementById('zoom-info');
+        if (zoomInfo) {
+            const zoomPercent = Math.round(currentZoom * 100);
+            const gridSizePx = Math.max(1, Math.round(currentGridSize));
+            const strokeWidthPx = Math.round(currentStrokeWidth * 10) / 10;
+            zoomInfo.textContent = `zoom: ${zoomPercent}% | grid: ${gridSizePx}px | stroke: ${strokeWidthPx}px | pan: drag to move`;
+        }
+    },
+    
+    updateGridOverlay: () => {
+        const gridOverlay = document.querySelector('.grid-overlay');
+        if (gridOverlay) {
+            const gridSizePx = Math.max(1, Math.round(currentGridSize));
+            gridOverlay.style.backgroundSize = `${gridSizePx}px ${gridSizePx}px`;
+        }
+    },
+    
+    reset: () => {
+        currentZoom = 1;
+        currentPanX = 0;
+        currentPanY = 0;
+        currentGridSize = BASE_GRID_SIZE;
+        currentStrokeWidth = BASE_STROKE_WIDTH;
+        viewManager.updateViewBox();
+        viewManager.updateGridOverlay();
         renderCountries();
         renderFlights();
     }
-}
+};
 
-function resetView() {
-    currentZoom = 1;
-    currentPanX = 0;
-    currentPanY = 0;
-    currentGridSize = BASE_GRID_SIZE;
-    currentStrokeWidth = BASE_STROKE_WIDTH;
-    updateViewBox();
-    updateGridOverlay();
-    
-    renderCountries();
-    renderFlights();
-}
+const zoomManager = {
+    zoomToPoint: (zoomDelta, clientX, clientY) => {
+        if (!svgElement || !mapContainer) return;
+        
+        const rect = mapContainer.getBoundingClientRect();
+        const svgX = (clientX - rect.left) / rect.width * MAP_WIDTH;
+        const svgY = (clientY - rect.top) / rect.height * MAP_HEIGHT;
+        
+        const oldZoom = currentZoom;
+        const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + zoomDelta));
+        
+        if (newZoom !== oldZoom) {
+            const oldGridSize = currentGridSize;
+            
+            currentZoom = newZoom;
+            const zoomFactor = Math.pow(2, Math.log2(currentZoom) * 0.7);
+            currentGridSize = BASE_GRID_SIZE / zoomFactor;
+            currentStrokeWidth = Math.max(0.5, BASE_STROKE_WIDTH / zoomFactor);
+            
+            const gridChangedSignificantly = Math.abs(Math.log2(oldGridSize) - Math.log2(currentGridSize)) > 0.1;
+            const zoomRatio = currentZoom / oldZoom;
+            const centerX = MAP_WIDTH / 2;
+            const centerY = MAP_HEIGHT / 2;
+            
+            const offsetX = svgX - centerX;
+            const offsetY = svgY - centerY;
+            
+            currentPanX += offsetX * (1 - 1/zoomRatio) / currentZoom;
+            currentPanY += offsetY * (1 - 1/zoomRatio) / currentZoom;
+            
+            viewManager.updateViewBox();
+            viewManager.updateGridOverlay();
+            
+            if (gridChangedSignificantly || Math.abs(zoomDelta) > ZOOM_STEP * 2) {
+                renderCountries();
+                renderFlights();
+                renderRailways();
+            }
+        }
+    },
+    reset: viewManager.reset
+};
 
 function initializePanZoom() {
-    svgElement = document.getElementById('map');
-    mapContainer = document.getElementById('map-container');
-    
-    if (!svgElement || !mapContainer) return;
-    
-    mapContainer.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-        zoomToPoint(zoomDelta, e.clientX, e.clientY);
-    });
-    
-    mapContainer.addEventListener('mousedown', (e) => {
-        if (e.button === 0) {
-            isPanning = true;
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
-            mapContainer.classList.add('panning');
-            e.preventDefault();
-        }
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-        if (isPanning) {
-            const deltaX = e.clientX - lastMouseX;
-            const deltaY = e.clientY - lastMouseY;
-            
-            const rect = mapContainer.getBoundingClientRect();
-            const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
-            const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
-            
-            currentPanX += deltaX * panFactorX;
-            currentPanY += deltaY * panFactorY;
-            
-            lastMouseX = e.clientX;
-            lastMouseY = e.clientY;
-            
-            updateViewBox();
-        }
-    });
-    
-    document.addEventListener('mouseup', () => {
-        if (isPanning) {
-            isPanning = false;
-            mapContainer.classList.remove('panning');
-        }
-    });
-    
-    document.getElementById('zoom-in').addEventListener('click', () => {
-        const rect = mapContainer.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        zoomToPoint(ZOOM_STEP, centerX, centerY);
-    });
-    
-    document.getElementById('zoom-out').addEventListener('click', () => {
-        const rect = mapContainer.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        zoomToPoint(-ZOOM_STEP, centerX, centerY);
-    });
-    
-    document.getElementById('zoom-reset').addEventListener('click', resetView);
-    
-    let lastTouchDistance = 0;
-    let touchCenterX = 0;
-    let touchCenterY = 0;
-    
-    mapContainer.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 1) {
-            isPanning = true;
-            lastMouseX = e.touches[0].clientX;
-            lastMouseY = e.touches[0].clientY;
-            mapContainer.classList.add('panning');
-        } else if (e.touches.length === 2) {
-            isPanning = false;
-            mapContainer.classList.remove('panning');
-            
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            
-            lastTouchDistance = Math.sqrt(
-                Math.pow(touch2.clientX - touch1.clientX, 2) +
-                Math.pow(touch2.clientY - touch1.clientY, 2)
-            );
-            
-            touchCenterX = (touch1.clientX + touch2.clientX) / 2;
-            touchCenterY = (touch1.clientY + touch2.clientY) / 2;
-        }
-        e.preventDefault();
-    });
-    
-    mapContainer.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 1 && isPanning) {
-            const deltaX = e.touches[0].clientX - lastMouseX;
-            const deltaY = e.touches[0].clientY - lastMouseY;
-            
-            const rect = mapContainer.getBoundingClientRect();
-            const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
-            const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
-            
-            currentPanX += deltaX * panFactorX;
-            currentPanY += deltaY * panFactorY;
-            
-            lastMouseX = e.touches[0].clientX;
-            lastMouseY = e.touches[0].clientY;
-            
-            updateViewBox();
-        } else if (e.touches.length === 2) {
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            
-            const currentDistance = Math.sqrt(
-                Math.pow(touch2.clientX - touch1.clientX, 2) +
-                Math.pow(touch2.clientY - touch1.clientY, 2)
-            );
-            
-            if (lastTouchDistance > 0) {
-                const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
-                zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
-            }
-            
-            lastTouchDistance = currentDistance;
-            touchCenterX = (touch1.clientX + touch2.clientX) / 2;
-            touchCenterY = (touch1.clientY + touch2.clientY) / 2;
-        }
-        e.preventDefault();
-    });
-    
-    mapContainer.addEventListener('touchend', (e) => {
-        if (e.touches.length === 0) {
-            isPanning = false;
-            lastTouchDistance = 0;
-            mapContainer.classList.remove('panning');
-        } else if (e.touches.length === 1) {
-            lastMouseX = e.touches[0].clientX;
-            lastMouseY = e.touches[0].clientY;
-        }
-        e.preventDefault();
-    });
-    
-    updateViewBox();
+  let lastTouchDistance = 0;
+  let touchCenterX = 0;
+  let touchCenterY = 0;
+  
+  svgElement = document.getElementById('map');
+  mapContainer = document.getElementById('map-container');
+  if (!svgElement || !mapContainer) return;
+  mapContainer.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+    zoomManager.zoomToPoint(zoomDelta, e.clientX, e.clientY);
+  });
+  mapContainer.addEventListener('mousedown', (e) => {
+    if (e.button === 0) {
+      isPanning = true;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      mapContainer.classList.add('panning');
+      e.preventDefault();
+    }
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (isPanning) {
+      const deltaX = e.clientX - lastMouseX;
+      const deltaY = e.clientY - lastMouseY;
+      const rect = mapContainer.getBoundingClientRect();
+      const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+      const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+      currentPanX += deltaX * panFactorX;
+      currentPanY += deltaY * panFactorY;
+      lastMouseX = e.clientX;
+      lastMouseY = e.clientY;
+      viewManager.updateViewBox();
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    if (isPanning) {
+      isPanning = false;
+      mapContainer.classList.remove('panning');
+    }
+  });
+  document.getElementById('zoom-in').addEventListener('click', () => {
+    const rect = mapContainer.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    zoomManager.zoomToPoint(ZOOM_STEP, centerX, centerY);
+  });
+  document.getElementById('zoom-out').addEventListener('click', () => {
+    const rect = mapContainer.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    zoomManager.zoomToPoint(-ZOOM_STEP, centerX, centerY);
+  });
+  document.getElementById('zoom-reset').addEventListener('click', zoomManager.reset);
+  mapContainer.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      isPanning = true;
+      lastMouseX = e.touches[0].clientX;
+      lastMouseY = e.touches[0].clientY;
+      mapContainer.classList.add('panning');
+    } else if (e.touches.length === 2) {
+      isPanning = false;
+      mapContainer.classList.remove('panning');
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      lastTouchDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+      touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+    }
+    e.preventDefault();
+  });
+  mapContainer.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 1 && isPanning) {
+      const deltaX = e.touches[0].clientX - lastMouseX;
+      const deltaY = e.touches[0].clientY - lastMouseY;
+      const rect = mapContainer.getBoundingClientRect();
+      const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+      const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+      currentPanX += deltaX * panFactorX;
+      currentPanY += deltaY * panFactorY;
+      lastMouseX = e.touches[0].clientX;
+      lastMouseY = e.touches[0].clientY;
+      viewManager.updateViewBox();
+    } else if (e.touches.length === 2) {
+      const touch1 = e.touches[0];
+      const touch2 = e.touches[1];
+      const currentDistance = Math.sqrt(
+        Math.pow(touch2.clientX - touch1.clientX, 2) +
+        Math.pow(touch2.clientY - touch1.clientY, 2)
+      );
+      if (lastTouchDistance > 0) {
+        const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
+        zoomManager.zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
+      }
+      lastTouchDistance = currentDistance;
+      touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+      touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+    }
+    e.preventDefault();
+  });
+  mapContainer.addEventListener('touchend', (e) => {
+    if (e.touches.length === 0) {
+      isPanning = false;
+      lastTouchDistance = 0;
+      mapContainer.classList.remove('panning');
+    } else if (e.touches.length === 1) {
+      lastMouseX = e.touches[0].clientX;
+      lastMouseY = e.touches[0].clientY;
+    }
+    e.preventDefault();
+  });
+  viewManager.updateViewBox();
+  
+  if (!svgElement || !mapContainer) return;
+  
+  mapContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+      zoomManager.zoomToPoint(zoomDelta, e.clientX, e.clientY);
+  });
+  
+  mapContainer.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+          isPanning = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+          mapContainer.classList.add('panning');
+          e.preventDefault();
+      }
+  });
+  
+  document.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+          const deltaX = e.clientX - lastMouseX;
+          const deltaY = e.clientY - lastMouseY;
+          
+          const rect = mapContainer.getBoundingClientRect();
+          const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+          const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+          
+          currentPanX += deltaX * panFactorX;
+          currentPanY += deltaY * panFactorY;
+          
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+          
+          viewManager.updateViewBox();
+      }
+  });
+  
+  document.addEventListener('mouseup', () => {
+      if (isPanning) {
+          isPanning = false;
+          mapContainer.classList.remove('panning');
+      }
+  });
+  
+  document.getElementById('zoom-in').addEventListener('click', () => {
+      const rect = mapContainer.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      zoomManager.zoomToPoint(ZOOM_STEP, centerX, centerY);
+  });
+  
+  document.getElementById('zoom-out').addEventListener('click', () => {
+      const rect = mapContainer.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      zoomManager.zoomToPoint(-ZOOM_STEP, centerX, centerY);
+  });
+  
+  document.getElementById('zoom-reset').addEventListener('click', viewManager.reset);
+  
+  let lastTouchDistance = 0;
+  let touchCenterX = 0;
+  let touchCenterY = 0;
+  
+  mapContainer.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+          isPanning = true;
+          lastMouseX = e.touches[0].clientX;
+          lastMouseY = e.touches[0].clientY;
+          mapContainer.classList.add('panning');
+      } else if (e.touches.length === 2) {
+          isPanning = false;
+          mapContainer.classList.remove('panning');
+          
+          const touch1 = e.touches[0];
+          const touch2 = e.touches[1];
+          
+          lastTouchDistance = Math.sqrt(
+              Math.pow(touch2.clientX - touch1.clientX, 2) +
+              Math.pow(touch2.clientY - touch1.clientY, 2)
+          );
+          
+          touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+          touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+      }
+      e.preventDefault();
+  });
+  
+  mapContainer.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && isPanning) {
+          const deltaX = e.touches[0].clientX - lastMouseX;
+          const deltaY = e.touches[0].clientY - lastMouseY;
+          
+          const rect = mapContainer.getBoundingClientRect();
+          const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+          const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+          
+          currentPanX += deltaX * panFactorX;
+          currentPanY += deltaY * panFactorY;
+          
+          lastMouseX = e.touches[0].clientX;
+          lastMouseY = e.touches[0].clientY;
+          
+          viewManager.updateViewBox();
+      } else if (e.touches.length === 2) {
+          const touch1 = e.touches[0];
+          const touch2 = e.touches[1];
+          
+          const currentDistance = Math.sqrt(
+              Math.pow(touch2.clientX - touch1.clientX, 2) +
+              Math.pow(touch2.clientY - touch1.clientY, 2)
+          );
+          
+          if (lastTouchDistance > 0) {
+              const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
+              zoomManager.zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
+          }
+          
+          lastTouchDistance = currentDistance;
+          touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+          touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+      }
+      e.preventDefault();
+  });
+  
+  mapContainer.addEventListener('touchend', (e) => {
+      if (e.touches.length === 0) {
+          isPanning = false;
+          lastTouchDistance = 0;
+          mapContainer.classList.remove('panning');
+      } else if (e.touches.length === 1) {
+          lastMouseX = e.touches[0].clientX;
+          lastMouseY = e.touches[0].clientY;
+      }
+  });
 }
 
 function createPath(coordinates, closed = true) {
     if (!coordinates || coordinates.length < 2) return '';
     
     let pathData = '';
+    const snapThreshold = currentGridSize * 0.7; // Slightly more forgiving threshold for snapping
     
     for (let i = 0; i < coordinates.length; i++) {
         const [lon, lat] = coordinates[i];
@@ -384,19 +505,22 @@ function createPath(coordinates, closed = true) {
             const dx = x - prev.x;
             const dy = y - prev.y;
             
-            if (dx === 0 || dy === 0) {
+            // More forgiving snapping for small movements
+            if (Math.abs(dx) < snapThreshold && Math.abs(dy) < snapThreshold) {
                 pathData += ` L ${x} ${y}`;
-            } else if (Math.abs(dx) === Math.abs(dy)) {
+            } else if (dx === 0 || dy === 0) {
                 pathData += ` L ${x} ${y}`;
-            } else if (Math.abs(dx - dy) <= currentGridSize) {
+            } else if (Math.abs(Math.abs(dx) - Math.abs(dy)) < snapThreshold) {
+                // If the line is approximately 45 degrees, keep it straight
                 pathData += ` L ${x} ${y}`;
             } else {
                 const absDx = Math.abs(dx);
                 const absDy = Math.abs(dy);
                 const minDist = Math.min(absDx, absDy);
                 
-                if (minDist >= currentGridSize * 2) {
-                    const diagLen = Math.floor(minDist * 0.6 / currentGridSize) * currentGridSize;
+                // Only create right angles if the distance is significant
+                if (minDist >= currentGridSize * 1.5) {
+                    const diagLen = Math.round(minDist * 0.7 / currentGridSize) * currentGridSize;
                     const diagX = prev.x + (dx > 0 ? diagLen : -diagLen);
                     const diagY = prev.y + (dy > 0 ? diagLen : -diagLen);
                     
@@ -408,11 +532,8 @@ function createPath(coordinates, closed = true) {
                         pathData += ` L ${diagX} ${y} L ${x} ${y}`;
                     }
                 } else {
-                    if (absDx > absDy) {
-                        pathData += ` L ${x} ${prev.y} L ${x} ${y}`;
-                    } else {
-                        pathData += ` L ${prev.x} ${y} L ${x} ${y}`;
-                    }
+                    // For small distances, just draw a straight line
+                    pathData += ` L ${x} ${y}`;
                 }
             }
         }
@@ -575,6 +696,135 @@ function renderFlights() {
     }
 }
 
+function renderRailways() {
+    const svg = document.getElementById('map');
+    let railwaysGroup = document.getElementById('railways-group');
+    
+    if (!railwaysGroup) {
+        railwaysGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        railwaysGroup.id = 'railways-group';
+        svg.appendChild(railwaysGroup);
+    }
+    
+    railwaysGroup.innerHTML = '';
+    
+    for (const offset of [0]) {
+        activeRailways.forEach((railway, index) => {
+            const fromStation = railwayStations[railway.from];
+            const toStation = railwayStations[railway.to];
+            
+            if (!fromStation || !toStation) {
+                console.error(`invalid railway: ${railway.from} -> ${railway.to}`);
+                return;
+            }
+            
+            const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            path.setAttribute('d', createRailwayPathWithOffset(fromStation, toStation, offset));
+            
+            const railwayType = fromStation.type === 'high_speed' && toStation.type === 'high_speed' ? 'high-speed' : 'intercity';
+            path.setAttribute('class', `railway-line ${railwayType}`);
+            path.setAttribute('stroke-width', currentStrokeWidth);
+            path.setAttribute('data-railway-index', index);
+            path.setAttribute('data-offset', offset);
+            
+            railwaysGroup.appendChild(path);
+            
+            const from = projectAndSnap(fromStation.lat, fromStation.lon);
+            const to = projectAndSnap(toStation.lat, toStation.lon);
+            
+            [from, to].forEach((point, pointIndex) => {
+                const station = pointIndex === 0 ? fromStation : toStation;
+                const dot = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                dot.setAttribute('x', point.x + offset - 2);
+                dot.setAttribute('y', point.y - 2);
+                dot.setAttribute('width', 4);
+                dot.setAttribute('height', 4);
+                dot.setAttribute('class', `railway-station ${station.type === 'high_speed' ? 'high-speed' : ''}`);
+                dot.setAttribute('data-offset', offset);
+                
+                railwaysGroup.appendChild(dot);
+            });
+        });
+    }
+}
+
+function createRailwayPathWithOffset(fromStation, toStation, xOffset) {
+    // Get station codes from the railway lookup
+    const fromCode = Object.keys(railwayStations).find(code => railwayStations[code] === fromStation);
+    const toCode = Object.keys(railwayStations).find(code => railwayStations[code] === toStation);
+    
+    // Check if there's a predefined route with waypoints
+    const route = railwayRoutes.find(r => 
+        (r.from === fromCode && r.to === toCode) ||
+        (r.from === toCode && r.to === fromCode)
+    );
+    
+    if (route && route.waypoints) {
+        // Use predefined waypoints for accurate routing
+        let pathData = '';
+        const waypoints = route.waypoints;
+        
+        for (let i = 0; i < waypoints.length; i++) {
+            const waypoint = waypoints[i];
+            const point = projectAndSnap(waypoint.lat, waypoint.lon);
+            const x = point.x + xOffset;
+            const y = point.y;
+            
+            if (i === 0) {
+                pathData += `M ${x} ${y}`;
+            } else {
+                const prevWaypoint = waypoints[i - 1];
+                const prevPoint = projectAndSnap(prevWaypoint.lat, prevWaypoint.lon);
+                const prevX = prevPoint.x + xOffset;
+                const prevY = prevPoint.y;
+                
+                // Create circuit-board style routing between waypoints
+                const dx = x - prevX;
+                const dy = y - prevY;
+                
+                if (Math.abs(dx) < currentGridSize && Math.abs(dy) < currentGridSize) {
+                    // Very close points, direct line
+                    pathData += ` L ${x} ${y}`;
+                } else if (Math.abs(dx) > Math.abs(dy)) {
+                    // Horizontal then vertical
+                    const midX = prevX + dx * 0.8;
+                    pathData += ` L ${midX} ${prevY} L ${midX} ${y} L ${x} ${y}`;
+                } else {
+                    // Vertical then horizontal
+                    const midY = prevY + dy * 0.8;
+                    pathData += ` L ${prevX} ${midY} L ${x} ${midY} L ${x} ${y}`;
+                }
+            }
+        }
+        
+        return pathData;
+    } else {
+        // Fallback to simple direct routing if no predefined route
+        const fromPoint = projectAndSnap(fromStation.lat, fromStation.lon);
+        const toPoint = projectAndSnap(toStation.lat, toStation.lon);
+        
+        const startX = fromPoint.x + xOffset;
+        const startY = fromPoint.y;
+        const endX = toPoint.x + xOffset;
+        const endY = toPoint.y;
+        
+        const dx = endX - startX;
+        const dy = endY - startY;
+        
+        let pathData = `M ${startX} ${startY}`;
+        
+        if (Math.abs(dx) > Math.abs(dy)) {
+            const midX = startX + dx * 0.7;
+            pathData += ` L ${midX} ${startY} L ${midX} ${endY} L ${endX} ${endY}`;
+        } else {
+            const midY = startY + dy * 0.7;
+            pathData += ` L ${startX} ${midY} L ${endX} ${midY} L ${endX} ${endY}`;
+        }
+        
+        return pathData;
+    }
+}
+
 function createFlightPathWithOffset(fromAirport, toAirport, xOffset) {
     const arcPoints = calculateGreatCirclePoints(
         fromAirport.lat, fromAirport.lon,
@@ -705,12 +955,50 @@ function addFlight(fromCode, toCode) {
     return true;
 }
 
+function addRailway(fromCode, toCode) {
+    if (!railwayStations[fromCode]) {
+        alert(`unknown railway station code: ${fromCode}`);
+        return false;
+    }
+    
+    if (!railwayStations[toCode]) {
+        alert(`unknown railway station code: ${toCode}`);
+        return false;
+    }
+    
+    const duplicate = activeRailways.some(railway => 
+        (railway.from === fromCode && railway.to === toCode) ||
+        (railway.from === toCode && railway.to === fromCode)
+    );
+    
+    if (duplicate) {
+        alert(`railway ${fromCode} ↔ ${toCode} already exists`);
+        return false;
+    }
+    
+    activeRailways.push({ from: fromCode, to: toCode });
+    saveRailwaysToStorage();
+    renderRailways();
+    updateRailwayList();
+    
+    return true;
+}
+
 function removeFlight(index) {
     if (index >= 0 && index < activeFlights.length) {
         const flight = activeFlights.splice(index, 1)[0];
         saveFlightsToStorage();
         renderFlights();
         updateFlightList();
+    }
+}
+
+function removeRailway(index) {
+    if (index >= 0 && index < activeRailways.length) {
+        const railway = activeRailways.splice(index, 1)[0];
+        saveRailwaysToStorage();
+        renderRailways();
+        updateRailwayList();
     }
 }
 
@@ -735,8 +1023,30 @@ function updateFlightList() {
     });
 }
 
+function updateRailwayList() {
+    const railwayList = document.getElementById('railway-list');
+    railwayList.innerHTML = '';
+    
+    activeRailways.forEach((railway, index) => {
+        const fromStation = railwayStations[railway.from];
+        const toStation = railwayStations[railway.to];
+        
+        const listItem = document.createElement('div');
+        listItem.className = 'transport-item railway-item';
+        listItem.innerHTML = `
+            <span class="transport-route">
+                ${railway.from} (${fromStation.name}) → ${railway.to} (${toStation.name})
+            </span>
+            <button class="remove-btn" onclick="removeRailway(${index})">×</button>
+        `;
+        
+        railwayList.appendChild(listItem);
+    });
+}
+
 function initializeMap() {
     loadFlightsFromStorage();
+    loadRailwaysFromStorage();
     
     let validAirports = 0;
     for (const [code, airport] of Object.entries(airports)) {
@@ -750,12 +1060,48 @@ function initializeMap() {
     
     renderCountries();
     renderFlights();
+    renderRailways();
     updateFlightList();
+    updateRailwayList();
     
     initializePanZoom();
     
     updateGridOverlay();
     
+    // Initialize transport mode switching
+    function switchTransportMode(mode) {
+        currentTransportMode = mode;
+        
+        // Update tab appearance
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.transport === mode) {
+                btn.classList.add('active');
+            }
+        });
+        
+        // Show/hide appropriate form
+        document.querySelectorAll('.transport-form').forEach(form => {
+            form.classList.remove('active');
+            if (form.dataset.transport === mode) {
+                form.classList.add('active');
+            }
+        });
+        
+        // Show/hide appropriate list
+        document.querySelectorAll('.transport-list-container').forEach(container => {
+            container.classList.remove('active');
+            if (container.dataset.transport === mode) {
+                container.classList.add('active');
+            }
+        });
+    }
+    
+    // Add tab event listeners
+    document.getElementById('flights-tab').addEventListener('click', () => switchTransportMode('flights'));
+    document.getElementById('railways-tab').addEventListener('click', () => switchTransportMode('railways'));
+    
+    // Flight form handler
     const flightForm = document.getElementById('flight-form');
     flightForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -775,12 +1121,35 @@ function initializeMap() {
             alert('please enter valid, different airport codes');
         }
     });
+    
+    // Railway form handler
+    const railwayForm = document.getElementById('railway-form');
+    railwayForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        
+        const fromInput = document.getElementById('from-station');
+        const toInput = document.getElementById('to-station');
+        
+        const fromCode = fromInput.value.trim().toUpperCase();
+        const toCode = toInput.value.trim().toUpperCase();
+        
+        if (fromCode && toCode && fromCode !== toCode) {
+            if (addRailway(fromCode, toCode)) {
+                fromInput.value = '';
+                toInput.value = '';
+            }
+        } else {
+            alert('please enter valid, different railway station codes');
+        }
+    });
 }
 
 
 
 window.addFlight = addFlight;
 window.removeFlight = removeFlight;
+window.addRailway = addRailway;
+window.removeRailway = removeRailway;
 window.initializeMap = initializeMap;
 
 if (document.readyState === 'loading') {

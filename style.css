@@ -7,6 +7,8 @@
     --pcb-cyan: #00ffff;
     --pcb-amber: #ffaa00;
     --pcb-red: #ff0040;
+    --pcb-purple: #ff00ff;
+    --pcb-blue: #4080ff;
     --pcb-gray: #333333;
     --pcb-light-gray: #666666;
     --grid-size: 16px;
@@ -179,6 +181,45 @@ body {
     fill: var(--pcb-amber);
 }
 
+/* railway lines */
+.railway-line {
+    fill: none;
+    stroke: var(--pcb-purple);
+    opacity: 0.8;
+    stroke-dasharray: 3, 2;
+}
+
+.railway-line:hover {
+    stroke: var(--pcb-blue);
+    opacity: 1.0;
+}
+
+.railway-line.high-speed {
+    stroke: var(--pcb-blue);
+    stroke-dasharray: none;
+    stroke-width: 2;
+}
+
+.railway-line.high-speed:hover {
+    stroke: var(--pcb-cyan);
+}
+
+/* railway stations */
+.railway-station {
+    fill: var(--pcb-purple);
+    stroke: var(--pcb-blue);
+    stroke-width: 1px;
+}
+
+.railway-station:hover {
+    fill: var(--pcb-blue);
+}
+
+.railway-station.high-speed {
+    fill: var(--pcb-blue);
+    stroke: var(--pcb-cyan);
+}
+
 /* grid overlay for debugging */
 .grid-overlay {
     position: absolute;
@@ -195,12 +236,48 @@ body {
     transition: background-size 0.1s ease;
 }
 
-/* form styles */
-.flight-form {
+/* transport tabs */
+.transport-tabs {
+    display: flex;
+    margin-bottom: 1rem;
+    border: 1px solid var(--pcb-gray);
+    background: var(--pcb-black);
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px;
+    background: var(--pcb-dark);
+    border: none;
+    color: var(--pcb-light-gray);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 12px;
+    text-transform: lowercase;
+    transition: all 0.2s ease;
+}
+
+.tab-btn.active {
+    background: var(--pcb-green);
+    color: var(--pcb-black);
+}
+
+.tab-btn:not(.active):hover {
+    background: var(--pcb-gray);
+    color: var(--pcb-green);
+}
+
+/* transport forms */
+.transport-form {
     border: 1px solid var(--pcb-gray);
     padding: 1rem;
     margin-bottom: 1.5rem;
     background: var(--pcb-black);
+    display: none;
+}
+
+.transport-form.active {
+    display: block;
 }
 
 .input-group {
@@ -237,7 +314,7 @@ body {
     opacity: 0.7;
 }
 
-.add-flight-btn {
+.add-btn {
     width: 100%;
     padding: 10px;
     background: var(--pcb-green);
@@ -250,33 +327,39 @@ body {
     font-weight: bold;
 }
 
-.add-flight-btn:hover {
+.add-btn:hover {
     background: var(--pcb-cyan);
 }
 
-.add-flight-btn:active {
+.add-btn:active {
     background: var(--pcb-amber);
 }
 
-/* flight list */
-.flight-list-container {
+/* transport lists */
+.transport-list-container {
     margin-bottom: 1.5rem;
+    display: none;
 }
 
-.flight-list-title {
+.transport-list-container.active {
+    display: block;
+}
+
+.transport-list-title {
     color: var(--pcb-cyan);
     font-size: 16px;
     margin-bottom: 0.5rem;
     text-transform: lowercase;
 }
 
-.flight-list {
+.transport-list {
     border: 1px solid var(--pcb-gray);
     background: var(--pcb-black);
     max-height: 200px;
     overflow-y: auto;
 }
 
+.transport-item,
 .flight-item {
     display: flex;
     justify-content: space-between;
@@ -285,14 +368,20 @@ body {
     border-bottom: 1px solid var(--pcb-gray);
 }
 
+.transport-item:last-child,
 .flight-item:last-child {
     border-bottom: none;
 }
 
+.transport-route,
 .flight-route {
     color: var(--pcb-green);
     font-size: 12px;
     flex: 1;
+}
+
+.railway-item .transport-route {
+    color: var(--pcb-purple);
 }
 
 .remove-btn {
@@ -346,11 +435,15 @@ body {
     color: var(--pcb-green);
 }
 
-.airport-codes {
+.reference-codes {
     margin-top: 1rem;
 }
 
-.airport-codes summary {
+.code-section {
+    margin-bottom: 1rem;
+}
+
+.code-section summary {
     color: var(--pcb-cyan);
     cursor: pointer;
     font-size: 12px;
