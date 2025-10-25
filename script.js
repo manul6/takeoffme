@@ -66,6 +66,17 @@ const mathUtils = {
     }
 };
 
+// Helper functions to call storage methods
+const saveFlightsToStorage = () => storage.saveFlights();
+const loadFlightsFromStorage = () => storage.loadFlights();
+const saveRailwaysToStorage = () => storage.saveRailways();
+const loadRailwaysFromStorage = () => storage.loadRailways();
+const validateCoordinate = (lat, lon, context) => projection.validate(lat, lon, context);
+const projectAndSnap = (lat, lon) => projection.projectAndSnap(lat, lon);
+const calculateGreatCirclePoints = (lat1, lon1, lat2, lon2, numPoints) => 
+    geodesy.calculateGreatCirclePoints(lat1, lon1, lat2, lon2, numPoints);
+const updateGridOverlay = () => viewManager.updateGridOverlay();
+
 const geodesy = {
     calculateGreatCirclePoints: (lat1, lon1, lat2, lon2, numPoints = 20) => {
         lon1 = ((lon1 + 180) % 360) - 180;
@@ -232,257 +243,150 @@ const zoomManager = {
 };
 
 function initializePanZoom() {
-  let lastTouchDistance = 0;
-  let touchCenterX = 0;
-  let touchCenterY = 0;
-  
-  svgElement = document.getElementById('map');
-  mapContainer = document.getElementById('map-container');
-  if (!svgElement || !mapContainer) return;
-  mapContainer.addEventListener('wheel', (e) => {
-    e.preventDefault();
-    const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-    zoomManager.zoomToPoint(zoomDelta, e.clientX, e.clientY);
-  });
-  mapContainer.addEventListener('mousedown', (e) => {
-    if (e.button === 0) {
-      isPanning = true;
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
-      mapContainer.classList.add('panning');
-      e.preventDefault();
-    }
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (isPanning) {
-      const deltaX = e.clientX - lastMouseX;
-      const deltaY = e.clientY - lastMouseY;
-      const rect = mapContainer.getBoundingClientRect();
-      const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
-      const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
-      currentPanX += deltaX * panFactorX;
-      currentPanY += deltaY * panFactorY;
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
-      viewManager.updateViewBox();
-    }
-  });
-  document.addEventListener('mouseup', () => {
-    if (isPanning) {
-      isPanning = false;
-      mapContainer.classList.remove('panning');
-    }
-  });
-  document.getElementById('zoom-in').addEventListener('click', () => {
-    const rect = mapContainer.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    zoomManager.zoomToPoint(ZOOM_STEP, centerX, centerY);
-  });
-  document.getElementById('zoom-out').addEventListener('click', () => {
-    const rect = mapContainer.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    zoomManager.zoomToPoint(-ZOOM_STEP, centerX, centerY);
-  });
-  document.getElementById('zoom-reset').addEventListener('click', zoomManager.reset);
-  mapContainer.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-      isPanning = true;
-      lastMouseX = e.touches[0].clientX;
-      lastMouseY = e.touches[0].clientY;
-      mapContainer.classList.add('panning');
-    } else if (e.touches.length === 2) {
-      isPanning = false;
-      mapContainer.classList.remove('panning');
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      lastTouchDistance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) +
-        Math.pow(touch2.clientY - touch1.clientY, 2)
-      );
-      touchCenterX = (touch1.clientX + touch2.clientX) / 2;
-      touchCenterY = (touch1.clientY + touch2.clientY) / 2;
-    }
-    e.preventDefault();
-  });
-  mapContainer.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 1 && isPanning) {
-      const deltaX = e.touches[0].clientX - lastMouseX;
-      const deltaY = e.touches[0].clientY - lastMouseY;
-      const rect = mapContainer.getBoundingClientRect();
-      const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
-      const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
-      currentPanX += deltaX * panFactorX;
-      currentPanY += deltaY * panFactorY;
-      lastMouseX = e.touches[0].clientX;
-      lastMouseY = e.touches[0].clientY;
-      viewManager.updateViewBox();
-    } else if (e.touches.length === 2) {
-      const touch1 = e.touches[0];
-      const touch2 = e.touches[1];
-      const currentDistance = Math.sqrt(
-        Math.pow(touch2.clientX - touch1.clientX, 2) +
-        Math.pow(touch2.clientY - touch1.clientY, 2)
-      );
-      if (lastTouchDistance > 0) {
-        const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
-        zoomManager.zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
-      }
-      lastTouchDistance = currentDistance;
-      touchCenterX = (touch1.clientX + touch2.clientX) / 2;
-      touchCenterY = (touch1.clientY + touch2.clientY) / 2;
-    }
-    e.preventDefault();
-  });
-  mapContainer.addEventListener('touchend', (e) => {
-    if (e.touches.length === 0) {
-      isPanning = false;
-      lastTouchDistance = 0;
-      mapContainer.classList.remove('panning');
-    } else if (e.touches.length === 1) {
-      lastMouseX = e.touches[0].clientX;
-      lastMouseY = e.touches[0].clientY;
-    }
-    e.preventDefault();
-  });
-  viewManager.updateViewBox();
-  
-  if (!svgElement || !mapContainer) return;
-  
-  mapContainer.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
-      zoomManager.zoomToPoint(zoomDelta, e.clientX, e.clientY);
-  });
-  
-  mapContainer.addEventListener('mousedown', (e) => {
-      if (e.button === 0) {
-          isPanning = true;
-          lastMouseX = e.clientX;
-          lastMouseY = e.clientY;
-          mapContainer.classList.add('panning');
-          e.preventDefault();
-      }
-  });
-  
-  document.addEventListener('mousemove', (e) => {
-      if (isPanning) {
-          const deltaX = e.clientX - lastMouseX;
-          const deltaY = e.clientY - lastMouseY;
-          
-          const rect = mapContainer.getBoundingClientRect();
-          const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
-          const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
-          
-          currentPanX += deltaX * panFactorX;
-          currentPanY += deltaY * panFactorY;
-          
-          lastMouseX = e.clientX;
-          lastMouseY = e.clientY;
-          
-          viewManager.updateViewBox();
-      }
-  });
-  
-  document.addEventListener('mouseup', () => {
-      if (isPanning) {
-          isPanning = false;
-          mapContainer.classList.remove('panning');
-      }
-  });
-  
-  document.getElementById('zoom-in').addEventListener('click', () => {
-      const rect = mapContainer.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      zoomManager.zoomToPoint(ZOOM_STEP, centerX, centerY);
-  });
-  
-  document.getElementById('zoom-out').addEventListener('click', () => {
-      const rect = mapContainer.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      zoomManager.zoomToPoint(-ZOOM_STEP, centerX, centerY);
-  });
-  
-  document.getElementById('zoom-reset').addEventListener('click', viewManager.reset);
-  
-  let lastTouchDistance = 0;
-  let touchCenterX = 0;
-  let touchCenterY = 0;
-  
-  mapContainer.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) {
-          isPanning = true;
-          lastMouseX = e.touches[0].clientX;
-          lastMouseY = e.touches[0].clientY;
-          mapContainer.classList.add('panning');
-      } else if (e.touches.length === 2) {
-          isPanning = false;
-          mapContainer.classList.remove('panning');
-          
-          const touch1 = e.touches[0];
-          const touch2 = e.touches[1];
-          
-          lastTouchDistance = Math.sqrt(
-              Math.pow(touch2.clientX - touch1.clientX, 2) +
-              Math.pow(touch2.clientY - touch1.clientY, 2)
-          );
-          
-          touchCenterX = (touch1.clientX + touch2.clientX) / 2;
-          touchCenterY = (touch1.clientY + touch2.clientY) / 2;
-      }
-      e.preventDefault();
-  });
-  
-  mapContainer.addEventListener('touchmove', (e) => {
-      if (e.touches.length === 1 && isPanning) {
-          const deltaX = e.touches[0].clientX - lastMouseX;
-          const deltaY = e.touches[0].clientY - lastMouseY;
-          
-          const rect = mapContainer.getBoundingClientRect();
-          const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
-          const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
-          
-          currentPanX += deltaX * panFactorX;
-          currentPanY += deltaY * panFactorY;
-          
-          lastMouseX = e.touches[0].clientX;
-          lastMouseY = e.touches[0].clientY;
-          
-          viewManager.updateViewBox();
-      } else if (e.touches.length === 2) {
-          const touch1 = e.touches[0];
-          const touch2 = e.touches[1];
-          
-          const currentDistance = Math.sqrt(
-              Math.pow(touch2.clientX - touch1.clientX, 2) +
-              Math.pow(touch2.clientY - touch1.clientY, 2)
-          );
-          
-          if (lastTouchDistance > 0) {
-              const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
-              zoomManager.zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
-          }
-          
-          lastTouchDistance = currentDistance;
-          touchCenterX = (touch1.clientX + touch2.clientX) / 2;
-          touchCenterY = (touch1.clientY + touch2.clientY) / 2;
-      }
-      e.preventDefault();
-  });
-  
-  mapContainer.addEventListener('touchend', (e) => {
-      if (e.touches.length === 0) {
-          isPanning = false;
-          lastTouchDistance = 0;
-          mapContainer.classList.remove('panning');
-      } else if (e.touches.length === 1) {
-          lastMouseX = e.touches[0].clientX;
-          lastMouseY = e.touches[0].clientY;
-      }
-  });
+    svgElement = document.getElementById('map');
+    mapContainer = document.getElementById('map-container');
+    if (!svgElement || !mapContainer) return;
+    
+    let lastTouchDistance = 0;
+    let touchCenterX = 0;
+    let touchCenterY = 0;
+    
+    // Mouse wheel zoom
+    mapContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomDelta = e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP;
+        zoomManager.zoomToPoint(zoomDelta, e.clientX, e.clientY);
+    }, { passive: false });
+    
+    // Mouse panning
+    mapContainer.addEventListener('mousedown', (e) => {
+        if (e.button === 0) {
+            isPanning = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            mapContainer.classList.add('panning');
+            e.preventDefault();
+        }
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (isPanning) {
+            const deltaX = e.clientX - lastMouseX;
+            const deltaY = e.clientY - lastMouseY;
+            
+            const rect = mapContainer.getBoundingClientRect();
+            const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+            const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+            
+            currentPanX += deltaX * panFactorX;
+            currentPanY += deltaY * panFactorY;
+            
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+            
+            viewManager.updateViewBox();
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (isPanning) {
+            isPanning = false;
+            mapContainer.classList.remove('panning');
+        }
+    });
+    
+    // Zoom buttons
+    document.getElementById('zoom-in').addEventListener('click', () => {
+        const rect = mapContainer.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        zoomManager.zoomToPoint(ZOOM_STEP, centerX, centerY);
+    });
+    
+    document.getElementById('zoom-out').addEventListener('click', () => {
+        const rect = mapContainer.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        zoomManager.zoomToPoint(-ZOOM_STEP, centerX, centerY);
+    });
+    
+    document.getElementById('zoom-reset').addEventListener('click', zoomManager.reset);
+    
+    // Touch events for mobile
+    mapContainer.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            isPanning = true;
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+            mapContainer.classList.add('panning');
+        } else if (e.touches.length === 2) {
+            isPanning = false;
+            mapContainer.classList.remove('panning');
+            
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            lastTouchDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) +
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            
+            touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+            touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+        }
+        e.preventDefault();
+    }, { passive: false });
+    
+    mapContainer.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 1 && isPanning) {
+            const deltaX = e.touches[0].clientX - lastMouseX;
+            const deltaY = e.touches[0].clientY - lastMouseY;
+            
+            const rect = mapContainer.getBoundingClientRect();
+            const panFactorX = (MAP_WIDTH / currentZoom) / rect.width;
+            const panFactorY = (MAP_HEIGHT / currentZoom) / rect.height;
+            
+            currentPanX += deltaX * panFactorX;
+            currentPanY += deltaY * panFactorY;
+            
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+            
+            viewManager.updateViewBox();
+        } else if (e.touches.length === 2) {
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            const currentDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) +
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            
+            if (lastTouchDistance > 0) {
+                const zoomDelta = (currentDistance - lastTouchDistance) * 0.01;
+                zoomManager.zoomToPoint(zoomDelta, touchCenterX, touchCenterY);
+            }
+            
+            lastTouchDistance = currentDistance;
+            touchCenterX = (touch1.clientX + touch2.clientX) / 2;
+            touchCenterY = (touch1.clientY + touch2.clientY) / 2;
+        }
+        e.preventDefault();
+    }, { passive: false });
+    
+    mapContainer.addEventListener('touchend', (e) => {
+        if (e.touches.length === 0) {
+            isPanning = false;
+            lastTouchDistance = 0;
+            mapContainer.classList.remove('panning');
+        } else if (e.touches.length === 1) {
+            lastMouseX = e.touches[0].clientX;
+            lastMouseY = e.touches[0].clientY;
+        }
+        e.preventDefault();
+    }, { passive: false });
+    
+    viewManager.updateViewBox();
 }
 
 function createPath(coordinates, closed = true) {
