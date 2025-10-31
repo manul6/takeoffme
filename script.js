@@ -9,8 +9,8 @@ const BASE_STROKE_WIDTH = 2;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.1;
-const MIN_GRID_POWER = -3;  // 2^-3 = 0.125, but we'll use 0.5 as minimum
-const MAX_GRID_POWER = 5;   // 2^5 = 32
+const MIN_GRID_POWER = -3;  // Special case: maps to 0.5px (see setGridSize function)
+const MAX_GRID_POWER = 5;   // 2^5 = 32px
 
 let manualGridPower = 2;  // 2^2 = 4 (default grid size)
 let currentGridSize = BASE_GRID_SIZE;
