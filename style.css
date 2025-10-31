@@ -381,21 +381,24 @@ body {
     -webkit-appearance: none;
     appearance: none;
     cursor: pointer;
+    touch-action: manipulation;
+    padding: 12px 0;
+    margin: 8px 0;
 }
 
 .grid-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
     background: var(--pcb-green);
     cursor: pointer;
     border: 1px solid var(--pcb-cyan);
 }
 
 .grid-slider::-moz-range-thumb {
-    width: 16px;
-    height: 16px;
+    width: 20px;
+    height: 20px;
     background: var(--pcb-green);
     cursor: pointer;
     border: 1px solid var(--pcb-cyan);
