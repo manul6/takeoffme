@@ -9,7 +9,10 @@ const BASE_STROKE_WIDTH = 2;
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 8;
 const ZOOM_STEP = 0.1;
+const MIN_GRID_POWER = -3;  // Special case: maps to 0.5px (see setGridSize function)
+const MAX_GRID_POWER = 5;   // 2^5 = 32px
 
+let manualGridPower = 2;  // 2^2 = 4 (default grid size)
 let currentGridSize = BASE_GRID_SIZE;
 let currentStrokeWidth = BASE_STROKE_WIDTH;
 let currentZoom = 1;
@@ -190,12 +193,22 @@ const viewManager = {
         currentZoom = 1;
         currentPanX = 0;
         currentPanY = 0;
-        currentGridSize = BASE_GRID_SIZE;
+        manualGridPower = 2;  // Reset to 2^2 = 4px
+        currentGridSize = Math.pow(2, manualGridPower);
         currentStrokeWidth = BASE_STROKE_WIDTH;
+        
+        // Update slider UI
+        const slider = document.getElementById('grid-size-slider');
+        if (slider) {
+            slider.value = manualGridPower;
+            updateGridSizeDisplay();
+        }
+        
         viewManager.updateViewBox();
         viewManager.updateGridOverlay();
         renderCountries();
         renderFlights();
+        renderRailways();
     }
 };
 
@@ -211,14 +224,13 @@ const zoomManager = {
         const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, currentZoom + zoomDelta));
         
         if (newZoom !== oldZoom) {
-            const oldGridSize = currentGridSize;
-            
             currentZoom = newZoom;
+            
+            // Grid size is now controlled by the manual slider, not zoom
+            // Only update stroke width based on zoom
             const zoomFactor = Math.pow(2, Math.log2(currentZoom) * 0.7);
-            currentGridSize = BASE_GRID_SIZE / zoomFactor;
             currentStrokeWidth = Math.max(0.5, BASE_STROKE_WIDTH / zoomFactor);
             
-            const gridChangedSignificantly = Math.abs(Math.log2(oldGridSize) - Math.log2(currentGridSize)) > 0.1;
             const zoomRatio = currentZoom / oldZoom;
             const centerX = MAP_WIDTH / 2;
             const centerY = MAP_HEIGHT / 2;
@@ -230,13 +242,11 @@ const zoomManager = {
             currentPanY += offsetY * (1 - 1/zoomRatio) / currentZoom;
             
             viewManager.updateViewBox();
-            viewManager.updateGridOverlay();
             
-            if (gridChangedSignificantly || Math.abs(zoomDelta) > ZOOM_STEP * 2) {
-                renderCountries();
-                renderFlights();
-                renderRailways();
-            }
+            // Always re-render on zoom since we removed the grid change check
+            renderCountries();
+            renderFlights();
+            renderRailways();
         }
     },
     reset: viewManager.reset
@@ -948,6 +958,52 @@ function updateRailwayList() {
     });
 }
 
+function updateGridSizeDisplay() {
+    const gridSizeValue = document.getElementById('grid-size-value');
+    if (gridSizeValue) {
+        const displayValue = currentGridSize < 1 
+            ? currentGridSize.toFixed(2) 
+            : Math.round(currentGridSize);
+        gridSizeValue.textContent = `${displayValue}px`;
+    }
+}
+
+function setGridSize(power) {
+    manualGridPower = power;
+    // Use exponential scale: 2^power
+    // Special case for minimum value to get 0.5
+    if (power === MIN_GRID_POWER) {
+        currentGridSize = 0.5;
+    } else {
+        currentGridSize = Math.pow(2, power);
+    }
+    
+    updateGridSizeDisplay();
+    viewManager.updateGridOverlay();
+    
+    // Re-render everything with the new grid size
+    renderCountries();
+    renderFlights();
+    renderRailways();
+    
+    // Update zoom info
+    viewManager.updateViewBox();
+}
+
+function initializeGridSizeControl() {
+    const slider = document.getElementById('grid-size-slider');
+    if (!slider) return;
+    
+    // Set initial value
+    updateGridSizeDisplay();
+    
+    // Add event listener
+    slider.addEventListener('input', (e) => {
+        const power = parseInt(e.target.value);
+        setGridSize(power);
+    });
+}
+
 function initializeMap() {
     loadFlightsFromStorage();
     loadRailwaysFromStorage();
@@ -969,6 +1025,7 @@ function initializeMap() {
     updateRailwayList();
     
     initializePanZoom();
+    initializeGridSizeControl();
     
     updateGridOverlay();
     
