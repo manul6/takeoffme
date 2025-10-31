@@ -335,6 +335,99 @@ body {
     background: var(--pcb-amber);
 }
 
+/* grid size control */
+.grid-size-control {
+    border: 1px solid var(--pcb-gray);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
+    background: var(--pcb-black);
+}
+
+.control-title {
+    color: var(--pcb-cyan);
+    font-size: 16px;
+    margin-bottom: 0.75rem;
+    text-transform: lowercase;
+}
+
+.slider-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.slider-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--pcb-light-gray);
+    font-size: 12px;
+    text-transform: lowercase;
+}
+
+.slider-value {
+    color: var(--pcb-green);
+    font-weight: bold;
+    min-width: 40px;
+    text-align: right;
+}
+
+.grid-slider {
+    width: 100%;
+    height: 4px;
+    background: var(--pcb-gray);
+    border: none;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+}
+
+.grid-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--pcb-green);
+    cursor: pointer;
+    border: 1px solid var(--pcb-cyan);
+}
+
+.grid-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--pcb-green);
+    cursor: pointer;
+    border: 1px solid var(--pcb-cyan);
+    border-radius: 0;
+}
+
+.grid-slider:hover::-webkit-slider-thumb {
+    background: var(--pcb-cyan);
+}
+
+.grid-slider:hover::-moz-range-thumb {
+    background: var(--pcb-cyan);
+}
+
+.grid-slider:focus {
+    outline: 2px solid var(--pcb-cyan);
+    outline-offset: 2px;
+}
+
+.slider-marks {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 2px;
+    font-size: 10px;
+    color: var(--pcb-gray);
+}
+
+.slider-marks span {
+    width: 0;
+    text-align: center;
+}
+
 /* transport lists */
 .transport-list-container {
     margin-bottom: 1.5rem;
